@@ -8,8 +8,10 @@ import traceback
 import snowflake.connector
 
 DIR = os.path.dirname(os.path.abspath(__file__))
-CMD_FIFO = os.path.join(DIR, '.sf_cmd.fifo')
-RESP_FIFO = os.path.join(DIR, '.sf_resp.fifo')
+RUNDIR = os.path.join(DIR, '.sfrun')
+os.makedirs(RUNDIR, exist_ok=True)
+CMD_FIFO = os.path.join(RUNDIR, 'cmd.fifo')
+RESP_FIFO = os.path.join(RUNDIR, 'resp.fifo')
 
 for f in (CMD_FIFO, RESP_FIFO):
     if os.path.exists(f):

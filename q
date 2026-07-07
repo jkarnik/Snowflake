@@ -1,9 +1,11 @@
 #!/bin/zsh
 # Send SQL (from stdin) to the persistent Snowflake session and print results.
 DIR="${0:A:h}"
-REQ="$(mktemp "$DIR/.sfq.XXXXXX").sql"
+RUNDIR="$DIR/.sfrun"
+STUB="$(mktemp "$RUNDIR/q.XXXXXX")"
+REQ="$STUB.sql"
 cat > "$REQ"
-echo "$REQ" > "$DIR/.sf_cmd.fifo"
-OUT="$(head -1 "$DIR/.sf_resp.fifo")"
+echo "$REQ" > "$RUNDIR/cmd.fifo"
+OUT="$(head -1 "$RUNDIR/resp.fifo")"
 cat "$OUT"
-rm -f "$REQ" "$OUT"
+rm -f "$STUB" "$REQ" "$OUT"
