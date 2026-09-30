@@ -14,9 +14,12 @@ gitignored `runs/` folder.
 
 The skill has four parts:
 - a main document (`SKILL.md`, moved from `Snowflake.md`)
-- one reference note per question area
+- reference notes: one per question area, plus a table index
 - a small MCP server that connects to Snowflake
 - a small settings file of non-secret connection values
+
+An updater (`/snowflake learn`) turns past runs into better notes. Repeat questions then need
+fewer queries.
 
 The MCP server signs in through Okta on the first Snowflake query in each Claude window. It keeps
 that login until the window closes.
@@ -39,6 +42,7 @@ The user made these decisions during brainstorming, 2026-09-28 to 2026-09-30.
 | D6 | No environment variables or secrets | Okta signs the user in through the browser. `~/.snowflake/connections.toml` holds the account, user, role and warehouse, none of them secret, along with the sign-in method. |
 | D7 | One main skill document | `CLAUDE.md` is deprecated. `Snowflake.md` becomes the skill's main file, renamed `SKILL.md` because Claude Code requires that name. Its subparts become reference files. |
 | D8 | Account owners | `Account_owner.sql` feeds the customers note. It maps an RPM account to its Salesforce account, then to that account's AE and TSM. |
+| D9 | Skill updater | `/snowflake learn` distils past runs into the notes: a table index, recipes, pitfalls and confirmed definitions. A fixed bar decides what's kept (§6.3). It replaces the per-answer offer to save knowledge. We considered progress monitoring and dropped it as overkill. |
 
 ### 2.1 Evidence behind D4
 
@@ -91,9 +95,10 @@ The logs from the spikes on 2026-09-29 and 2026-09-30 are in `runs/20260929-1539
   only a preview does.
 - **Safety.** The skill only reads, and refuses anything else before it reaches Snowflake. It
   queries production databases only, unless the user asks otherwise.
-- **Gets smarter.** Claude may learn something reusable, such as a table, a join or a definition
-  the user confirmed. When it does, it offers to add it to the right reference note. Notes hold
-  definitions and example queries with placeholders, and never hold customer data or results.
+- **Gets smarter.** `/snowflake learn` reads past runs and writes what's worth keeping into the
+  reference notes (§6.3), so similar questions need fewer queries next time. The skill suggests it
+  once five or more new runs are waiting. Notes hold definitions and example queries with
+  placeholders, and never hold customer data or results.
 
 ## 4. Architecture
 
@@ -111,7 +116,7 @@ skills/snowflake/SKILL.md ──▶ references/*.md (read on demand)
 | `skills/snowflake/references/*.md` | Domain knowledge per question area, with verified example queries | — |
 | `skills/snowflake/mcp_server/` | The MCP server: lazy login, read-only guard, query execution and result files | `mcp`, `snowflake-connector-python`, `sqlglot`, the settings file |
 | `~/.snowflake/connections.toml` | Non-secret connection settings | — |
-| `runs/` (gitignored) | Every output, one folder per question | — |
+| `runs/` (gitignored) | Every output, one folder per question, plus the updater's list of learned runs | — |
 
 Setup links the skill folder into Claude (`~/.claude/skills/snowflake` → `skills/snowflake`). It
 also registers the MCP server at user scope, so both are available in every Claude window. Edits
@@ -194,8 +199,13 @@ It returns a plain-text result containing:
   commas, quotes, tabs or line breaks survive intact.
 - The server finds `runs/` relative to its own location, at the repo root. A `--runs-dir` argument
   can override that.
-- Claude writes `summary.md` into the same folder, with the answer and "How I got this". Any other
-  output for the question goes there too.
+- Claude writes `summary.md` into the same folder. It holds four things:
+  - the answer and "How I got this"
+  - any check-in answer the user gave
+  - the recipes that Claude used
+  - the table-index entries that Claude used
+
+  Any other output for the question goes there too.
 
 ### 5.5 Errors and how Claude responds
 
@@ -238,7 +248,8 @@ The body stays under 150 lines, in four parts.
 
 1. **Workflow.**
    1. Understand the question.
-   2. Read the matching reference note.
+   2. Check `references/tables.md` and the recipes in the matching area note. Search Snowflake's
+      catalog only if nothing there fits.
    3. Check in if D3 applies.
    4. Call `status`, and warn the user before a first login.
    5. Run the queries, with independent ones in parallel.
@@ -253,8 +264,9 @@ The body stays under 150 lines, in four parts.
    - Keep the 5-minute default time limit.
    - Write outputs only to the question's `runs/` folder. Never write them to the current project
      unless the user asks.
-3. **Gets smarter.** This part says when to offer a note update. It states the no-customer-data
-   rule. Note edits stay uncommitted until the user asks to commit.
+3. **Learning.** `/snowflake learn` follows `references/updater.md` (§6.3). After an answer, Claude
+   mentions the updater once five or more unlearned runs are waiting. Notes never hold customer
+   data. Note edits stay uncommitted until the user asks to commit.
 4. **Reference index.** One line per note, saying when to read it.
 
 ### 6.2 Reference notes (`skills/snowflake/references/`)
@@ -265,6 +277,11 @@ The body stays under 150 lines, in four parts.
 | `customers.md` | Salesforce accounts and billing addresses, with line-break cleanup. Account owners: RPM account → Salesforce account → AE and TSM. Organisations and entitlements. The RPM account ID as the join from usage tables to Salesforce, confirmed in the knowledge checks. | `Account_owner.sql`, `addr.sql`, `Snowflake.md` |
 | `billing.md` | Product consumption tables and their columns. The `ALL_DAILY_USAGE` rules: append-only, de-duplication, the `INSERTED_AT` tie-break and US over EU. Product lines and metrics. The pipeline and its 2 am PST SLA. The Slack help channels. | `Snowflake.md` |
 | `finding-data.md` | Data layers and environments. The database and schema inventory. Naming standards and data classification. Discovery queries using `INFORMATION_SCHEMA`, `DESCRIBE` and the dbt artifacts. The Confluence reference pages. | `Snowflake.md` |
+| `tables.md` | The table index, built by the updater. For each table used: what it holds, its key columns and their meaning, gotchas, and a last-used date. | Runs, via the updater |
+| `updater.md` | The updater's steps and the bar for what's kept (§6.3). | — |
+
+Each area note has a Recipes section and a Pitfalls section. Every learned entry carries a
+last-used date.
 
 Every example query meets three conditions:
 - It sits in a fenced `sql` block.
@@ -276,6 +293,55 @@ One fact is dropped outright. The data dictionary in the developer sandbox
 `DEV_KNAGENDRA_TRANSFORMED` breaks the production-only rule, and `INFORMATION_SCHEMA` covers its
 purpose.
 
+### 6.3 The skill updater (`references/updater.md`)
+
+The updater runs when the user types `/snowflake learn` or asks the skill to learn from its runs.
+Nothing runs on a schedule. It uses Claude's normal file tools and `run_query`, so it adds no new
+code.
+
+Steps:
+1. List the question folders in `runs/` that `runs/learned.txt` doesn't name yet.
+2. Read each folder's `.sql` files, including failed ones, and its `summary.md`. Never open the
+   CSVs.
+3. Pick the items that clear the bar below.
+4. Rewrite each item with `{{placeholders}}`. Re-run every new or changed recipe through
+   `run_query`, and drop any that fail.
+5. Write the new entries:
+   - table entries go in `tables.md`
+   - recipes, pitfalls and confirmed definitions go in the matching area note
+
+   Update an existing entry instead of adding a near-copy. Set the last-used date on every entry
+   that a run used.
+6. Apply the size limits.
+7. Add the processed folders to `runs/learned.txt`.
+8. Report in a few lines what it added, updated, merged and removed. Leave the edits uncommitted.
+
+**The bar.** The updater keeps an item only if it passes all three of these tests:
+- **It worked,** and still works when re-run.
+- **It's reusable.** It can be written with placeholders, and isn't tied to one customer or one
+  day.
+- **It's new.** If the notes already cover it, the updater updates that entry instead.
+
+It must also pass at least one of these:
+- **Changes the answer.** This covers a definition the user confirmed at a check-in, a filter or
+  rule needed for correct numbers, or a trap that produced a wrong result. These entries are
+  critical: always kept and never pruned.
+- **Saved effort.** Finding it took searching or a failed attempt.
+- **Came up again.** The same table or query shape appears in two or more questions.
+
+**Never stored:**
+- results or numbers
+- customer names or IDs
+- full column lists. `DESCRIBE` returns those in a second, so store only key columns and their
+  meaning
+- facts that go stale, such as row counts or the latest loaded date
+- near-copies of an existing recipe
+
+**Size limits.** Each reference note stays under about 300 lines, and `SKILL.md` stays under 150.
+When an update would push a note past its limit, the updater first merges similar entries. Then it
+removes entries that no question has used for 90 days, oldest first. It never removes a critical
+entry. A recipe that stops working gets fixed or removed.
+
 ## 7. Outputs and file layout
 
 Tracked in git:
@@ -284,10 +350,10 @@ Tracked in git:
 README.md                      what the skill is; install, update, uninstall; running tests
 requirements.txt               pinned Python dependencies
 skills/snowflake/SKILL.md      main skill document (moved from Snowflake.md)
-skills/snowflake/references/   npm.md, customers.md, billing.md, finding-data.md
+skills/snowflake/references/   npm.md, customers.md, billing.md, finding-data.md, tables.md, updater.md
 skills/snowflake/mcp_server/   guard.py, results.py, server.py
 skills/snowflake/evals/        end-to-end prompts and expected behaviour (placeholders only)
-tests/                         unit tests and check scripts
+tests/                         unit tests, check scripts, made-up runs for the updater tests
 docs/superpowers/              this spec and the implementation plan
 ```
 
@@ -299,6 +365,7 @@ runs/<YYYY-MM-DD>/<question>/  NN-<step>.sql, NN-<step>.csv, summary.md, other o
 runs/logs/<YYYY-MM-DD>.log     MCP server event log (no query results)
 runs/originals/                company_query.sql, Account_owner.sql, addr.sql, addr.tsv
 runs/evals/values.toml         real values for placeholders: company names, account IDs
+runs/learned.txt               question folders the updater has already learned from
 ```
 
 Customer names and IDs appear only in gitignored files.
@@ -399,12 +466,32 @@ Every prompt that triggers the skill must also meet these checks:
 
 Across the whole set, check-ins happen on E3 and E7, and on no other prompt.
 
-### 10.5 Pass criteria
+### 10.5 Updater tests
+
+- **Made-up runs.** `tests/fixtures/runs/` holds runs with invented company names. They include:
+  - a table used in two questions
+  - a query that failed, then was fixed
+  - a confirmed definition
+  - a trivial one-off query
+  - a near-copy of an existing recipe
+
+  After one updater pass:
+  - the notes gain the table entry, the pitfall and the definition
+  - the one-off query is skipped, and the near-copy is merged
+  - no invented company name or ID appears in the notes
+  - a second pass finds nothing new
+- **Size limit.** A note pushed past its limit shrinks by merging entries and removing unused ones.
+  No critical entry is removed.
+- **Speed check.** Ask a new kind of question, run the updater, then ask again in a fresh window.
+  The second answer uses fewer queries.
+
+### 10.6 Pass criteria
 
 - Every unit test passes.
 - Every reference-note query runs.
 - The live login checks show no login and exactly one login.
 - All ten evals meet their "Must" column and the checks above.
+- The updater tests pass, including the speed check.
 - With the skill, each prompt that triggers it meets more of its checks than it did in the
   baseline run without the skill.
 
@@ -419,6 +506,8 @@ Across the whole set, check-ins happen on E3 and E7, and on no other prompt.
 | Claude Code may not load a symlinked skill folder. | Verify during setup. If it fails, copy the folder instead and add an update step. |
 | Claude Code's MCP tool timeout may be shorter than a 5-minute query. | Check the default during implementation. If it's shorter, lower the query limit instead of adding a setting (D6). |
 | Every Claude window runs an idle server process. | Lazy imports keep that process light. |
+| The notes fill with noise over time. | The bar and the size limits in §6.3. Edits stay uncommitted, so the user can undo any change. |
+| The updater learns a mistake. | It re-runs every recipe before saving it. It takes business definitions only from the user's own check-in answers. |
 
 ## 12. Out of scope
 
@@ -429,3 +518,6 @@ Across the whole set, check-ins happen on E3 and E7, and on no other prompt.
 - Getting saved logins (`ALLOW_ID_TOKEN`) enabled. That needs a request to the data platform team,
   and isn't part of this build.
 - Snowflake Cortex features, dashboards or scheduled reports.
+- Progress monitoring, such as live status, run history or a learning log. The user judged it
+  overkill.
+- Scheduled or automatic learning. The updater runs only when the user asks.
