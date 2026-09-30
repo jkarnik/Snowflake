@@ -1,4 +1,4 @@
-# Arshad_Snowflake Skill
+# Snowflake Skill
 
 Connect to New Relic's Snowflake instance and run analytical queries.
 
