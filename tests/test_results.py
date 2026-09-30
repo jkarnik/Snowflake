@@ -1,7 +1,9 @@
+import csv
 import threading
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 
-from results import question_dir, save_query, slugify
+from results import question_dir, save_query, slugify, write_csv
 
 
 def test_slugify_keeps_letters_digits_and_single_hyphens():
@@ -57,3 +59,58 @@ def test_parallel_saves_get_distinct_numbers(tmp_path):  # Review Focus 1
     for t in threads:
         t.join()
     assert sorted(int(n.split("-")[0]) for n in names) == list(range(1, 21))
+
+
+TRICKY = [
+    ("a,b", 'say "hi"', "tab\there", "line\nbreak", None, "Demirören Teknoloji Şirketi"),
+    (Decimal("1.50"), datetime(2026, 9, 30, 14, 5), True, b"\x00\xff", 42, ""),
+]
+
+
+def read_back(path):
+    with open(path, newline="", encoding="utf-8") as f:
+        return list(csv.reader(f))
+
+
+def test_csv_round_trip_keeps_tricky_values(tmp_path):
+    path = tmp_path / "01-q.csv"
+    result = write_csv(path, ["c1", "c2", "c3", "c4", "c5", "c6"], iter(TRICKY), max_rows=100)
+    rows = read_back(path)
+    assert rows[0] == ["c1", "c2", "c3", "c4", "c5", "c6"]
+    assert rows[1] == ["a,b", 'say "hi"', "tab\there", "line\nbreak", "", "Demirören Teknoloji Şirketi"]
+    assert rows[2] == ["1.50", "2026-09-30 14:05:00", "True", "00ff", "42", ""]
+    assert (result.row_count, result.truncated) == (2, False)
+    assert result.preview == TRICKY
+
+
+def test_large_result_writes_every_row_and_keeps_a_50_row_preview(tmp_path):
+    path = tmp_path / "01-big.csv"
+    result = write_csv(path, ["n"], ((i,) for i in range(5000)), max_rows=100000)
+    assert len(read_back(path)) == 5001
+    assert (result.row_count, result.truncated, len(result.preview)) == (5000, False, 50)
+
+
+def test_max_rows_truncates_the_csv(tmp_path):
+    path = tmp_path / "01-big.csv"
+    result = write_csv(path, ["n"], ((i,) for i in range(150)), max_rows=100)
+    assert len(read_back(path)) == 101
+    assert (result.row_count, result.truncated) == (100, True)
+
+
+def test_exactly_max_rows_is_not_truncated(tmp_path):
+    result = write_csv(tmp_path / "01-x.csv", ["n"], ((i,) for i in range(100)), max_rows=100)
+    assert (result.row_count, result.truncated) == (100, False)
+
+
+def test_zero_rows_writes_a_header_only_csv(tmp_path):  # Review Focus 5
+    path = tmp_path / "01-none.csv"
+    result = write_csv(path, ["a", "b"], iter([]), max_rows=10)
+    assert read_back(path) == [["a", "b"]]
+    assert (result.row_count, result.truncated, result.preview) == (0, False, [])
+
+
+def test_no_result_columns_writes_an_empty_csv(tmp_path):  # Review Focus 5
+    path = tmp_path / "01-nothing.csv"
+    result = write_csv(path, [], iter([]), max_rows=10)
+    assert path.read_text() == ""
+    assert result.row_count == 0

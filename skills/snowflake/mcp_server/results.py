@@ -1,8 +1,11 @@
 """Result files: one folder per question under runs/, numbered SQL and CSV files, previews."""
+import csv
 import fcntl
 import os
 import re
 import unicodedata
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -42,3 +45,39 @@ def save_query(folder: Path, step: str, sql: str) -> tuple[Path, Path]:
     finally:
         os.close(lock_fd)  # closing the descriptor releases the lock
     return sql_path, sql_path.with_suffix(".csv")
+
+
+@dataclass
+class CsvResult:
+    row_count: int
+    truncated: bool
+    preview: list[tuple]
+
+
+def _cell(value):
+    """NULL becomes empty and bytes become hex; csv writes everything else with str()."""
+    if value is None:
+        return ""
+    if isinstance(value, (bytes, bytearray)):
+        return value.hex()
+    return value
+
+
+def write_csv(csv_path: Path, columns: list[str], rows: Iterable[Sequence], max_rows: int,
+              preview_rows: int = 50) -> CsvResult:
+    """Stream rows into a UTF-8 CSV with a header row, stopping after max_rows."""
+    count, truncated, preview = 0, False, []
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        if not columns:  # the statement returned no result columns
+            return CsvResult(0, False, [])
+        writer = csv.writer(f)
+        writer.writerow(columns)
+        for row in rows:
+            if count == max_rows:
+                truncated = True
+                break
+            writer.writerow([_cell(v) for v in row])
+            if count < preview_rows:
+                preview.append(tuple(row))
+            count += 1
+    return CsvResult(count, truncated, preview)
