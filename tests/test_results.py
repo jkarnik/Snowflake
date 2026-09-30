@@ -3,7 +3,8 @@ import threading
 from datetime import date, datetime
 from decimal import Decimal
 
-from results import CsvResult, format_preview, format_result, question_dir, save_query, slugify, write_csv
+from results import (CsvResult, format_preview, format_result, question_dir, save_query, slugify,
+                     unlearned_folders, write_csv)
 
 
 def test_slugify_keeps_letters_digits_and_single_hyphens():
@@ -154,3 +155,17 @@ def test_result_text_for_zero_rows(tmp_path):  # Review Focus 5
                          sql_path=tmp_path / "a.sql", csv_path=tmp_path / "a.csv", max_rows=10)
     assert text.splitlines()[0] == "Rows: 0 | Columns: 1 | Seconds: 0.10 | Query ID: unknown"
     assert text.splitlines()[-1] == "Preview: no rows."
+
+
+def test_unlearned_folders_lists_question_folders_not_yet_learned(tmp_path):
+    for rel in ["2026-10-01/npm-devices", "2026-10-01/ae-lookup", "2026-10-02/billing-addresses"]:
+        (tmp_path / rel).mkdir(parents=True)
+    for other in ["logs", "originals", "evals", "20260930-173831-juniper-mist"]:  # never question folders
+        (tmp_path / other).mkdir()
+    (tmp_path / "2026-10-01" / "stray.txt").write_text("x")
+    (tmp_path / "learned.txt").write_text("2026-10-01/ae-lookup\n\n")
+    assert unlearned_folders(tmp_path) == ["2026-10-01/npm-devices", "2026-10-02/billing-addresses"]
+
+
+def test_unlearned_folders_without_a_runs_folder(tmp_path):
+    assert unlearned_folders(tmp_path / "missing") == []

@@ -116,3 +116,19 @@ def format_result(*, columns: list[str], result: CsvResult, elapsed: float, quer
         lines.append(f"Note: the CSV stopped at max_rows={max_rows}. More rows exist; "
                      "narrow the query or raise max_rows.")
     return "\n".join(lines)
+
+
+_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def unlearned_folders(runs_dir: Path) -> list[str]:
+    """Question folders (runs/<YYYY-MM-DD>/<question>/) that runs/learned.txt doesn't list yet."""
+    runs_dir = Path(runs_dir)
+    learned_file = runs_dir / "learned.txt"
+    learned = set(learned_file.read_text(encoding="utf-8").split()) if learned_file.exists() else set()
+    found = {
+        f"{day.name}/{question.name}"
+        for day in runs_dir.glob("*") if day.is_dir() and _DAY.match(day.name)
+        for question in day.iterdir() if question.is_dir()
+    }
+    return sorted(found - learned)
