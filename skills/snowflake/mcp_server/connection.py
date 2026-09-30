@@ -31,6 +31,18 @@ class _Attempt:
         return max(0.0, self.started + timeout - time.monotonic())
 
 
+@contextlib.contextmanager
+def _stdout_to_stderr():
+    """Stdout carries the MCP protocol; overlapping logins must not restore each other's stdout."""
+    target, saved = sys.stderr, sys.stdout
+    sys.stdout = target
+    try:
+        yield
+    finally:
+        if sys.stdout is target:      # only undo our own change
+            sys.stdout = saved
+
+
 class LazyConnection:
     def __init__(self, connect: Callable[[], Any], login_timeout: float = 120.0,
                  log: EventLog | None = None) -> None:
@@ -67,7 +79,7 @@ class LazyConnection:
         # The connector's browser wait has no timeout, so it runs here while get() waits with one.
         started = time.monotonic()
         try:
-            with contextlib.redirect_stdout(sys.stderr):    # stdout carries the MCP protocol
+            with _stdout_to_stderr():    # stdout carries the MCP protocol
                 conn = self._connect()
         except Exception as exc:
             attempt.error = exc

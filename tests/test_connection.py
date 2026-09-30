@@ -1,3 +1,4 @@
+import sys
 import threading
 import time
 
@@ -96,3 +97,18 @@ def test_login_events_are_logged(tmp_path):
     text = next(tmp_path.glob("*.log")).read_text()
     assert " login_started" in text
     assert " logged_in seconds=" in text
+
+
+def test_overlapping_logins_restore_stdout():
+    original = sys.stdout
+    connector = FakeConnector(delay=0.4)        # login 1 finishes at about 0.4 s
+    lazy = LazyConnection(connector, login_timeout=0.1)
+    before = set(threading.enumerate())
+    with pytest.raises(LoginTimeout):
+        lazy.get()                              # login 1 times out at 0.1 s but keeps running
+    connector.delay = 0.5                       # login 2 starts at 0.1 s and finishes at 0.6 s, after login 1
+    with pytest.raises(LoginTimeout):
+        lazy.get()                              # times out at 0.2 s, while both logins are still running
+    for thread in set(threading.enumerate()) - before:
+        thread.join()                           # wait until both login threads have left their redirects
+    assert sys.stdout is original
