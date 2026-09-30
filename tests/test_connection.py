@@ -3,8 +3,10 @@ import threading
 import time
 
 import pytest
+from snowflake.connector.errors import OperationalError, ProgrammingError
 
-from connection import LazyConnection, LoginFailed, LoginTimeout
+from connection import (LazyConnection, LoginExpired, LoginFailed, LoginTimeout, classify_error,
+                        default_connect)
 from eventlog import EventLog
 from fakes import FakeConnector
 
@@ -112,3 +114,52 @@ def test_overlapping_logins_restore_stdout():
     for thread in set(threading.enumerate()) - before:
         thread.join()                           # wait until both login threads have left their redirects
     assert sys.stdout is original
+
+
+def test_an_expired_session_never_opens_a_browser_inside_a_query():
+    conn = LazyConnection(FakeConnector()).get()
+    with pytest.raises(LoginExpired):
+        conn._reauthenticate()          # what the connector calls when the session has expired
+
+
+def test_discard_forgets_the_connection_and_the_next_get_logs_in_again():
+    connector = FakeConnector()
+    lazy = LazyConnection(connector)
+    conn = lazy.get()
+    lazy.discard(conn)
+    assert lazy.state() == {"state": "logged_out"}
+    assert lazy.get() is not conn
+    assert connector.calls == 2
+
+
+def test_default_connect_uses_the_newrelic_settings(monkeypatch):
+    import snowflake.connector
+
+    seen = {}
+    monkeypatch.setattr(snowflake.connector, "connect", lambda **kw: seen.update(kw) or "conn")
+    assert default_connect() == "conn"
+    assert seen == {"connection_name": "newrelic", "client_session_keep_alive": True,
+                    "session_parameters": {"QUERY_TAG": "snowflake-skill"}}
+
+
+@pytest.mark.parametrize("exc,code", [
+    (LoginTimeout("slow"), "LOGIN_TIMEOUT"),
+    (LoginFailed("no"), "LOGIN_FAILED"),
+    (LoginExpired("gone"), "LOGIN_EXPIRED"),
+    (OperationalError(msg="Connection is closed", errno=250002), "LOGIN_EXPIRED"),
+    (ProgrammingError(msg="Session no longer exists.", errno=390112), "LOGIN_EXPIRED"),
+    (ProgrammingError(msg="Authentication token has expired.", errno=390114), "LOGIN_EXPIRED"),
+    (ProgrammingError(msg="SQL execution was cancelled by the client due to a timeout.", errno=604), "TIMEOUT"),
+    (ProgrammingError(msg="Statement reached its statement or warehouse timeout.", errno=630), "TIMEOUT"),
+    (ProgrammingError(msg="SQL compilation error: Object 'X' does not exist.", errno=2003), "SQL_ERROR"),
+    (OSError(28, "No space left on device"), "INTERNAL_ERROR"),
+    (RuntimeError("bug"), "INTERNAL_ERROR"),
+])
+def test_classify_error_maps_failures_to_codes(exc, code):
+    assert classify_error(exc)[0] == code
+
+
+def test_a_sql_error_keeps_snowflakes_message():
+    code, message = classify_error(ProgrammingError(msg="SQL compilation error: invalid identifier 'FOO'", errno=904))
+    assert code == "SQL_ERROR"
+    assert "invalid identifier 'FOO'" in message

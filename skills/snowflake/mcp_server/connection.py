@@ -21,6 +21,11 @@ class LoginExpired(Exception):
     """The session lapsed; the next call opens a fresh login."""
 
 
+def _refuse_reauthentication(*args, **kwargs):
+    # The connector calls this on an expired session and would wait on a browser forever (§5.5).
+    raise LoginExpired("The Snowflake session expired.")
+
+
 class _Attempt:
     def __init__(self) -> None:
         self.started = time.monotonic()
@@ -86,6 +91,7 @@ class LazyConnection:
             self._event("login_failed", seconds=time.monotonic() - started, error=type(exc).__name__)
             attempt.done.set()
             return
+        conn._reauthenticate = _refuse_reauthentication
         with self._lock:
             keep = self._conn is None
             if keep:
@@ -109,3 +115,42 @@ class LazyConnection:
         if attempt is not None and not attempt.done.is_set() and attempt.remaining(self._timeout) > 0:
             return {"state": "logging_in", "seconds_left": round(attempt.remaining(self._timeout))}
         return {"state": "logged_out"}
+
+    def discard(self, conn: Any) -> None:
+        """Forget a dead connection so the next get() logs in again."""
+        with self._lock:
+            if self._conn is conn:
+                self._conn = None
+
+
+def default_connect() -> Any:
+    """Open the real connection from ~/.snowflake/connections.toml, importing the connector only now."""
+    import snowflake.connector
+
+    return snowflake.connector.connect(
+        connection_name="newrelic",
+        client_session_keep_alive=True,
+        session_parameters={"QUERY_TAG": "snowflake-skill"},
+    )
+
+
+_EXPIRED_ERRNOS = {250002, 390112, 390114}   # connection closed, session expired, master token expired
+_TIMEOUT_ERRNOS = {604, 630}                 # cancelled by the client timer, statement timeout
+
+
+def classify_error(exc: BaseException) -> tuple[str, str]:
+    """Map a login or query failure to a §5.5 code (plus P4's LOGIN_FAILED and INTERNAL_ERROR)."""
+    if isinstance(exc, LoginTimeout):
+        return "LOGIN_TIMEOUT", str(exc)
+    if isinstance(exc, LoginFailed):
+        return "LOGIN_FAILED", str(exc)
+    if isinstance(exc, LoginExpired):
+        return "LOGIN_EXPIRED", str(exc)
+    if type(exc).__module__.startswith("snowflake.connector"):
+        errno = getattr(exc, "errno", None)
+        if errno in _EXPIRED_ERRNOS:
+            return "LOGIN_EXPIRED", str(exc)
+        if errno in _TIMEOUT_ERRNOS or "due to a timeout" in str(exc):
+            return "TIMEOUT", str(exc)
+        return "SQL_ERROR", str(exc)
+    return "INTERNAL_ERROR", f"{type(exc).__name__}: {exc}"
