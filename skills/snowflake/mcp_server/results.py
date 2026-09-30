@@ -81,3 +81,38 @@ def write_csv(csv_path: Path, columns: list[str], rows: Iterable[Sequence], max_
                 preview.append(tuple(row))
             count += 1
     return CsvResult(count, truncated, preview)
+
+
+def _preview_cell(value, max_cell: int) -> str:
+    if value is None:
+        return "NULL"
+    text = value.hex() if isinstance(value, (bytes, bytearray)) else str(value)
+    text = text.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
+    return text if len(text) <= max_cell else text[: max_cell - 1] + "…"
+
+
+def format_preview(columns: list[str], rows: list[tuple], max_cell: int = 200) -> str:
+    """Tab-separated header and rows. NULL shows as NULL; tabs and line breaks are escaped."""
+    lines = ["\t".join(_preview_cell(c, max_cell) for c in columns)]
+    lines += ["\t".join(_preview_cell(v, max_cell) for v in row) for row in rows]
+    return "\n".join(lines)
+
+
+def format_result(*, columns: list[str], result: CsvResult, elapsed: float, query_id: str | None,
+                  sql_path: Path, csv_path: Path, max_rows: int) -> str:
+    """The text that run_query returns to Claude."""
+    lines = [
+        f"Rows: {result.row_count} | Columns: {len(columns)} | Seconds: {elapsed:.2f}"
+        f" | Query ID: {query_id or 'unknown'}",
+        f"SQL: {sql_path}",
+        f"CSV: {csv_path}",
+    ]
+    if result.preview:
+        lines.append(f"Preview ({len(result.preview)} of {result.row_count} rows):")
+        lines.append(format_preview(columns, result.preview))
+    else:
+        lines.append("Preview: no rows.")
+    if result.truncated:
+        lines.append(f"Note: the CSV stopped at max_rows={max_rows}. More rows exist; "
+                     "narrow the query or raise max_rows.")
+    return "\n".join(lines)

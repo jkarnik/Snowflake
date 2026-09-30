@@ -3,7 +3,7 @@ import threading
 from datetime import date, datetime
 from decimal import Decimal
 
-from results import question_dir, save_query, slugify, write_csv
+from results import CsvResult, format_preview, format_result, question_dir, save_query, slugify, write_csv
 
 
 def test_slugify_keeps_letters_digits_and_single_hyphens():
@@ -114,3 +114,43 @@ def test_no_result_columns_writes_an_empty_csv(tmp_path):  # Review Focus 5
     result = write_csv(path, [], iter([]), max_rows=10)
     assert path.read_text() == ""
     assert result.row_count == 0
+
+
+def test_preview_escapes_tabs_and_line_breaks_and_shows_nulls():
+    text = format_preview(["a", "b"], [("x\ty", "line1\nline2\r"), (None, "back\\slash")])
+    assert text.splitlines() == ["a\tb", "x\\ty\tline1\\nline2\\r", "NULL\tback\\\\slash"]
+
+
+def test_preview_shortens_long_cells_to_200_characters():
+    cell = format_preview(["a"], [("z" * 500,)]).splitlines()[1]
+    assert len(cell) == 200
+    assert cell.endswith("…")
+
+
+def test_result_text_has_header_paths_and_preview(tmp_path):
+    result = CsvResult(row_count=2, truncated=False, preview=[(1, "a"), (2, "b")])
+    text = format_result(columns=["n", "s"], result=result, elapsed=1.234, query_id="01abc",
+                         sql_path=tmp_path / "01-q.sql", csv_path=tmp_path / "01-q.csv", max_rows=100000)
+    lines = text.splitlines()
+    assert lines[0] == "Rows: 2 | Columns: 2 | Seconds: 1.23 | Query ID: 01abc"
+    assert lines[1] == f"SQL: {tmp_path / '01-q.sql'}"
+    assert lines[2] == f"CSV: {tmp_path / '01-q.csv'}"
+    assert lines[3] == "Preview (2 of 2 rows):"
+    assert lines[4:] == ["n\ts", "1\ta", "2\tb"]
+
+
+def test_result_text_notes_truncation(tmp_path):
+    result = CsvResult(row_count=100, truncated=True, preview=[(i,) for i in range(50)])
+    text = format_result(columns=["n"], result=result, elapsed=0.5, query_id="q1",
+                         sql_path=tmp_path / "a.sql", csv_path=tmp_path / "a.csv", max_rows=100)
+    assert "Preview (50 of 100 rows):" in text
+    assert text.splitlines()[-1] == ("Note: the CSV stopped at max_rows=100. More rows exist; "
+                                     "narrow the query or raise max_rows.")
+
+
+def test_result_text_for_zero_rows(tmp_path):  # Review Focus 5
+    result = CsvResult(row_count=0, truncated=False, preview=[])
+    text = format_result(columns=["a"], result=result, elapsed=0.1, query_id=None,
+                         sql_path=tmp_path / "a.sql", csv_path=tmp_path / "a.csv", max_rows=10)
+    assert text.splitlines()[0] == "Rows: 0 | Columns: 1 | Seconds: 0.10 | Query ID: unknown"
+    assert text.splitlines()[-1] == "Preview: no rows."
