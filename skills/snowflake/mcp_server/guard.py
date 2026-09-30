@@ -2,7 +2,7 @@
 import logging
 
 import sqlglot
-from sqlglot import exp
+from sqlglot import exp, tokens
 
 # sqlglot warns on stderr whenever it falls back to a generic Command; the guard handles those.
 logging.getLogger("sqlglot").setLevel(logging.ERROR)
@@ -17,6 +17,10 @@ class Blocked(Exception):
 def check_sql(sql: str) -> str:
     """Return "SELECT", "SHOW" or "DESCRIBE" for an allowed statement; raise Blocked otherwise."""
     try:
+        # Snowflake's ->> flow operator chains statements without a semicolon; block it.
+        tokenized = sqlglot.tokenize(sql, dialect="snowflake")
+        if any(t.token_type == tokens.TokenType.DARROW for t in tokenized):
+            raise Blocked(f"the ->> flow operator chains statements; send exactly one. {ALLOWED_HINT}")
         parsed = sqlglot.parse(sql, dialect="snowflake")
     except sqlglot.errors.SqlglotError as exc:
         first_line = str(exc).splitlines()[0]

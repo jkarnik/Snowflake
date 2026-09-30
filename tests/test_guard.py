@@ -54,6 +54,8 @@ REFUSED = {
     "garbage": ("SELEC * FRM t", "Alias"),
     "empty": ("", "no statement"),
     "only_comment": ("-- nothing", "no statement"),
+    "flow_operator_delete": ("SELECT 1 ->> DELETE FROM t", "->>"),
+    "flow_operator_after_show": ("SHOW PARAMETERS ->> DROP TABLE t", "->>"),
 }
 
 
