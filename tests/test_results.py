@@ -161,7 +161,7 @@ def test_unlearned_folders_lists_question_folders_not_yet_learned(tmp_path):
     for rel in ["2026-10-01/npm-devices", "2026-10-01/ae-lookup", "2026-10-02/billing-addresses"]:
         (tmp_path / rel).mkdir(parents=True)
     for other in ["logs", "originals", "evals", "20260930-173831-juniper-mist"]:  # never question folders
-        (tmp_path / other).mkdir()
+        (tmp_path / other / "some-run").mkdir(parents=True)
     (tmp_path / "2026-10-01" / "stray.txt").write_text("x")
     (tmp_path / "learned.txt").write_text("2026-10-01/ae-lookup\n\n")
     assert unlearned_folders(tmp_path) == ["2026-10-01/npm-devices", "2026-10-02/billing-addresses"]
