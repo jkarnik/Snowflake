@@ -19,3 +19,18 @@ def test_write_never_raises(tmp_path):
     blocker = tmp_path / "logs"
     blocker.write_text("a file where the folder should be")
     EventLog(blocker).write("server_started")
+
+    # Test with object whose __str__ raises
+    class RaisingStr:
+        def __str__(self):
+            raise RuntimeError("oops")
+
+    log = EventLog(tmp_path / "ok")
+    log.write("event_with_raising_str", obj=RaisingStr())
+
+    # Test with lone surrogate (unencodable)
+    log.write("event_with_surrogate", value="\ud800")
+
+    # Verify the surrogate event was written
+    lines = (tmp_path / "ok" / f"{date.today().isoformat()}.log").read_text().splitlines()
+    assert any("event_with_surrogate" in line for line in lines)
