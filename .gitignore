@@ -10,3 +10,7 @@ runs/
 
 # Ad-hoc SQL scratch/output
 *.out
+
+# Python caches
+__pycache__/
+.pytest_cache/
