@@ -1,0 +1,5 @@
+# Pinned for the repo's .venv (Python 3.14). See plan decision P8.
+snowflake-connector-python[secure-local-storage]==4.6.0
+mcp==2.2.0
+sqlglot==30.20.0
+pytest==9.1.1
