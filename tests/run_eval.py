@@ -4,7 +4,8 @@ Usage: .venv/bin/python tests/run_eval.py <E1..E10> <skill|baseline>
 
 Fills {{placeholders}} from runs/evals/values.toml and runs from an empty scratch folder outside
 the repo. Saves the transcript, answer and facts under runs/evals/<YYYY-MM-DD>/<id>-<mode>/, and
-prints the facts a grader needs. It never grades the answer.
+prints the facts a grader needs. It never grades the answer. Baseline mode turns skills off and
+denies Read, Grep, Glob and Bash, so a baseline window can't read the skill's notes from the repo.
 """
 import json
 import re
@@ -32,6 +33,18 @@ def load_prompt(eval_id: str, evals_text: str, values: dict) -> str:
                 raise KeyError(", ".join(missing))
             return PLACEHOLDER.sub(lambda m: str(values[m.group(1)]), cells[1])
     raise KeyError(f"no eval {eval_id}")
+
+
+def build_command(prompt: str, mode: str) -> list[str]:
+    """The claude command for one window. The prompt stays at index 2; variadic flags go last."""
+    cmd = [CLAUDE, "-p", prompt, "--model", "sonnet", "--output-format", "stream-json",
+           "--verbose", "--no-session-persistence"]
+    if mode == "baseline":  # P11: the server stays, skills go; its tools are pre-allowed
+        # Local file and shell tools are denied so a baseline can't read the skill's notes in the repo.
+        cmd += ["--disable-slash-commands",
+                "--allowedTools", "mcp__snowflake__run_query", "mcp__snowflake__status",
+                "--disallowedTools", "Read", "Grep", "Glob", "Bash"]
+    return cmd
 
 
 def facts(events: list[dict]) -> dict:
@@ -65,11 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     out = REPO / "runs" / "evals" / date.today().isoformat() / f"{eval_id}-{mode}"
     out.mkdir(parents=True, exist_ok=True)
     before = repo_changes_outside_runs()
-    cmd = [CLAUDE, "-p", prompt, "--model", "sonnet", "--output-format", "stream-json",
-           "--verbose", "--no-session-persistence"]
-    if mode == "baseline":  # P11: the server stays, skills go; its tools are pre-allowed
-        cmd += ["--disable-slash-commands",
-                "--allowedTools", "mcp__snowflake__run_query", "mcp__snowflake__status"]
+    cmd = build_command(prompt, mode)
     with tempfile.TemporaryDirectory() as scratch:
         try:
             proc = subprocess.run(cmd, cwd=scratch, capture_output=True, text=True, timeout=1800)

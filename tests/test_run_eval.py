@@ -1,6 +1,6 @@
 import pytest
 
-from run_eval import EVALS, facts, load_prompt
+from run_eval import EVALS, build_command, facts, load_prompt
 
 
 def test_every_eval_prompt_loads_with_its_placeholders_filled():
@@ -38,3 +38,16 @@ def test_facts_flags_a_transcript_without_a_result():
     assert result["status_calls"] == 0
     assert result["run_query_calls"] == 0
     assert result["permission_denials"] == 0
+
+
+def test_baseline_window_cannot_read_local_files_and_skill_window_is_unchanged():
+    skill = build_command("Prompt text", "skill")
+    baseline = build_command("Prompt text", "baseline")
+    for flag in ("--disable-slash-commands", "--allowedTools", "--disallowedTools"):
+        assert flag not in skill
+        assert flag in baseline
+    # the variadic flags come last, so neither can swallow the prompt or each other's values
+    assert baseline[baseline.index("--allowedTools") + 1:baseline.index("--disallowedTools")] == [
+        "mcp__snowflake__run_query", "mcp__snowflake__status"]
+    assert baseline[baseline.index("--disallowedTools") + 1:] == ["Read", "Grep", "Glob", "Bash"]
+    assert skill[2] == baseline[2] == "Prompt text"
