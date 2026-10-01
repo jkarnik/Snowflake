@@ -28,4 +28,13 @@ def test_facts_reads_a_stream_json_transcript():
         {"type": "result", "result": "Answer text", "permission_denials": []},
     ]
     assert facts(events) == {"skill_triggered": True, "status_calls": 1, "run_query_calls": 1,
-                             "permission_denials": 0, "answer": "Answer text"}
+                             "permission_denials": 0, "answer": "Answer text", "result_seen": True}
+
+
+def test_facts_flags_a_transcript_without_a_result():
+    assert facts([])["result_seen"] is False
+    result = facts([])
+    assert result["skill_triggered"] is False
+    assert result["status_calls"] == 0
+    assert result["run_query_calls"] == 0
+    assert result["permission_denials"] == 0

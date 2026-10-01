@@ -38,14 +38,15 @@ def facts(events: list[dict]) -> dict:
     """What happened in a stream-json transcript: skill use, tool calls, denials, final answer."""
     uses = [part for event in events if event.get("type") == "assistant"
             for part in event.get("message", {}).get("content", []) if part.get("type") == "tool_use"]
-    result = next((event for event in events if event.get("type") == "result"), {})
+    result = next((event for event in events if event.get("type") == "result"), None)
     return {
         "skill_triggered": any(u["name"] == "Skill" and u.get("input", {}).get("skill") == "snowflake"
                                for u in uses),
         "status_calls": sum(u["name"] == "mcp__snowflake__status" for u in uses),
         "run_query_calls": sum(u["name"] == "mcp__snowflake__run_query" for u in uses),
-        "permission_denials": len(result.get("permission_denials", [])),
-        "answer": result.get("result", ""),
+        "permission_denials": len(result.get("permission_denials", [])) if result else 0,
+        "answer": result.get("result", "") if result else "",
+        "result_seen": result is not None,
     }
 
 
@@ -70,16 +71,28 @@ def main(argv: list[str] | None = None) -> int:
         cmd += ["--disable-slash-commands",
                 "--allowedTools", "mcp__snowflake__run_query", "mcp__snowflake__status"]
     with tempfile.TemporaryDirectory() as scratch:
-        proc = subprocess.run(cmd, cwd=scratch, capture_output=True, text=True, timeout=1800)
+        try:
+            proc = subprocess.run(cmd, cwd=scratch, capture_output=True, text=True, timeout=1800)
+            exit_code = proc.returncode
+            stdout = proc.stdout
+            stderr = proc.stderr
+        except subprocess.TimeoutExpired as exc:
+            exit_code = -1
+            stdout = exc.stdout.decode("utf-8", "replace") if exc.stdout else ""
+            stderr = exc.stderr.decode("utf-8", "replace") if exc.stderr else ""
         stray = sorted(p.name for p in Path(scratch).iterdir())
-    (out / "transcript.jsonl").write_text(proc.stdout, encoding="utf-8")
-    (out / "stderr.txt").write_text(proc.stderr, encoding="utf-8")
-    found = facts([json.loads(line) for line in proc.stdout.splitlines() if line.startswith("{")])
+    (out / "transcript.jsonl").write_text(stdout, encoding="utf-8")
+    (out / "stderr.txt").write_text(stderr, encoding="utf-8")
+    found = facts([json.loads(line) for line in stdout.splitlines() if line.startswith("{")])
     (out / "answer.md").write_text(found.pop("answer"), encoding="utf-8")
     found["files_in_scratch_folder"] = stray
     found["repo_changes_outside_runs"] = sorted(repo_changes_outside_runs() - before)
+    found["exit_code"] = exit_code
     (out / "facts.json").write_text(json.dumps(found, indent=2), encoding="utf-8")
     print(f"{eval_id} {mode}: {json.dumps(found)}\nSaved in {out}")
+    if exit_code != 0 or not found["result_seen"]:
+        print(f"WARNING: window failed or produced no final result (exit_code={exit_code}, result_seen={found['result_seen']}) and must not be graded")
+        return 1
     return 0
 
 
