@@ -7,7 +7,7 @@ network data, NPM ingest (SNMP, syslog, flow, traps) and trends.
 
 | Source | Table | NPM filter | Grain | Use for |
 |---|---|---|---|---|
-| ELIA (entity-level ingest) | `TRANSFORMED.PRODUCT_ENGINEERING.ENTITY_INGEST_DAILY_F` | `METRIC = 'NetworkMonitoring'` | One row per entity per day | Devices, device types, accounts with devices |
+| ELIA (entity-level ingest) | `TRANSFORMED.PRODUCT_ENGINEERING.ENTITY_INGEST_DAILY_F` | `METRIC = 'NetworkMonitoring'` | Rows can repeat per entity and day, so count `DISTINCT ENTITY_GUID` | Devices, device types, accounts with devices |
 | Instrumentation Insights (II) | `TRANSFORMED.PRODUCT_CONSUMPTION.NRDB_TDP_USAGE_DAILY_F` | `USAGE_CATEGORY = 'NetworkMonitoring'` | Ingest per account, event and day | GB ingested, split by data type |
 
 ELIA key columns: `USAGE_DATE`, `ACCOUNT_ID` (the account the data lands in),

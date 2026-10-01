@@ -85,6 +85,5 @@ ORDER BY PRODUCT_LINE, METRIC
 ## Pitfalls
 
 - **Repeated inserts double-count.** Keep one row per account, `START_TIME`, `METRIC` and `PRODUCT_LINE`: `ROW_NUMBER()` over that partition, latest `INSERTED_AT` first. Critical. Last used: 2026-09-30.
-- **US wins over EU.** When an account reports from both data centres, billing keeps the US row, ordering by data centre ascending. Run `DESCRIBE TABLE USAGE_AND_RATING.USAGE.ALL_DAILY_USAGE` to find the data-centre column, and put it first in the `ORDER BY` of the de-duplication. Critical. Last used: 2026-09-30.
 - **Gauges aren't additive.** `FullPlatformUsers`, `FullUsers` and `CoreUsers` are levels. Never `SUM` them across days. Critical. Last used: 2026-09-30.
 - **Scan size.** `ALL_DAILY_USAGE` has hundreds of millions of rows on an XSMALL warehouse. Always filter by account and a date range, or use `SAMPLE` while exploring. Last used: 2026-09-30.

@@ -21,7 +21,7 @@ columns.
 
 ### Account owners (AE and TSM) for a company
 Use for: "who are the AE and TSM for X". An empty owner column means Salesforce has none assigned.
-For an account ID, replace the last `WHERE` with `WHERE B.RPM_ACCOUNT_ID = {{account_id}}`.
+For an account ID, replace the last `WHERE` with `WHERE B.RPM_ACCOUNT_ID = '{{account_id}}'`.
 Last used: 2026-09-30.
 
 ```sql
@@ -60,7 +60,7 @@ SELECT R.RPM_ACCOUNT_ID, R.RPM_ACCOUNT_NAME, ACC.SFDC_ACCOUNT_NAME
 FROM TRANSFORMED.SALES.SFDC_RPM_RECORD_D R
 JOIN TRANSFORMED.SALES.SFDC_ACCOUNT_D ACC ON ACC.SFDC_ACCOUNT_ID = R.SFDC_ACCOUNT_ID
 WHERE R.IS_DELETED = FALSE
-  AND R.RPM_ACCOUNT_ID = {{account_id}}
+  AND R.RPM_ACCOUNT_ID = '{{account_id}}'
 ```
 
 ### Billing address, one line per company
@@ -96,6 +96,7 @@ SHOW TABLES IN SCHEMA CONFORMED.COMPACT_ENTITLEMENTS_V2
 
 - **Match names loosely.** Legal names carry suffixes and non-ASCII letters (`A.Ş.`, `Pty Ltd`), and pasted copies can be garbled. Use `ILIKE '%…%'` on a distinctive word, then confirm with the user if several companies match. Last used: 2026-09-30.
 - **Deleted records linger.** Filter `IS_DELETED = FALSE` on `SFDC_RPM_RECORD_D` and `ACCOUNT_TEAM_MEMBER_D`, or former owners appear. Critical. Last used: 2026-09-30.
+- **RPM IDs are text in Salesforce but numbers in usage.** `RPM_ACCOUNT_ID` on `SFDC_RPM_RECORD_D` is text, and some IDs aren't numeric, while `BILLABLE_RPM_ACCOUNT_ID` is a number. Joining the two directly, or comparing the text column to a bare number, fails with a numeric-cast error. Quote an ID typed into a query (`'{{account_id}}'`), and cast the usage side when joining: `R.RPM_ACCOUNT_ID = U.BILLABLE_RPM_ACCOUNT_ID::VARCHAR`. Last used: 2026-10-01.
 - **One company, many accounts.** A Salesforce account can have several RPM accounts. Show them all, not just the first. Last used: 2026-09-30.
 - **Rolling accounts up to clients.** Group by `SUBSCRIPTION_ACCOUNT_ID`, the customer contract (`CC-…`). Label each client with its Salesforce name through `SFDC_RPM_RECORD_D` → `SFDC_ACCOUNT_D`, and fall back to the `ORGANIZATION_DB` org name, since many orgs are just named "Organization …". Last used: 2026-09-30.
 - **New Relic's own accounts.** Internal and test accounts sit in the orgs named "New Relic Production US" and "New Relic Production EU". Exclude them from customer counts. Critical. Last used: 2026-09-30.
