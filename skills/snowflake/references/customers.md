@@ -5,8 +5,9 @@ owners (AE and TSM), organisations and entitlements, or turning an account ID in
 
 ## How accounts join
 
-The RPM account ID links usage to Salesforce. Usage tables call it `BILLABLE_RPM_ACCOUNT_ID`
-(`billing.md`) or `ACCOUNT_ID`/`SUBSCRIPTION_ACCOUNT_ID` (`npm.md`). The steps:
+The RPM account ID links usage to Salesforce. `ALL_DAILY_USAGE` calls it `BILLABLE_RPM_ACCOUNT_ID`
+(`billing.md`), and the NPM tables call it `ACCOUNT_ID` (`npm.md`). `SUBSCRIPTION_ACCOUNT_ID` is the
+customer contract (`CC-…`), not an RPM ID, so never join it to `RPM_ACCOUNT_ID`. The steps:
 
 1. `TRANSFORMED.SALES.SFDC_RPM_RECORD_D` maps `RPM_ACCOUNT_ID` (and `RPM_ACCOUNT_NAME`) to `SFDC_ACCOUNT_ID`. Filter `IS_DELETED = FALSE`.
 2. `TRANSFORMED.SALES.SFDC_ACCOUNT_D` gives `SFDC_ACCOUNT_NAME` for an `SFDC_ACCOUNT_ID`.
