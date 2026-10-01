@@ -203,3 +203,31 @@ async def test_queries_are_logged_without_results(make, tmp_path):
     log_text = next((tmp_path / "runs" / "logs").glob("*.log")).read_text()
     assert " query_finished seconds=" in log_text and " rows=1 " in log_text
     assert "secret value" not in log_text and "SECRET_COLUMN" not in log_text
+
+
+@pytest.mark.anyio
+async def test_a_guard_crash_still_returns_a_code(make, tmp_path):
+    server, connector, _ = make()
+    is_error, text = await call(server, "run_query", sql="DESC.RIBE TABLE db.sch.t", question="q")
+    assert is_error
+    assert "INTERNAL_ERROR: " in text
+    assert "SQL: " in text
+    assert (tmp_path / "runs" / TODAY / "q" / "01-query.sql").exists()
+    assert connector.calls == 0
+    log_text = next((tmp_path / "runs" / "logs").glob("*.log")).read_text()
+    assert " query_failed code=INTERNAL_ERROR" in log_text
+
+
+@pytest.mark.anyio
+async def test_a_failure_mid_stream_deletes_the_partial_csv(make, tmp_path):
+    server, _, lazy = make()
+    def rows():
+        yield (1,)
+        yield (2,)
+        raise ProgrammingError(msg="Connection lost", errno=250)
+    lazy.get().result = (["N"], rows())
+    is_error, text = await call(server, "run_query", sql="SELECT n FROM t", question="q")
+    assert is_error
+    assert "SQL_ERROR: " in text
+    assert (tmp_path / "runs" / TODAY / "q" / "01-query.sql").exists()
+    assert not (tmp_path / "runs" / TODAY / "q" / "01-query.csv").exists()

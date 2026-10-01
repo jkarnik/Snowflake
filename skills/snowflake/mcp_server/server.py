@@ -71,6 +71,8 @@ def build_server(runs_dir: Path, connection: LazyConnection, log: EventLog) -> M
             check_sql(sql)
         except Blocked as exc:
             raise fail("BLOCKED", str(exc)) from None
+        except Exception as exc:
+            raise fail("INTERNAL_ERROR", f"{type(exc).__name__}: {exc}") from None
         conn = None
         try:
             conn = connection.get()
