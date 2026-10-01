@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:
                 code, message = classify_error(exc)
                 failures += 1
-                print(f"FAIL {where} {code}: {message.splitlines()[0]}")
+                print(f"FAIL {where} {code}: {" ".join(message.split())}")
                 if code.startswith("LOGIN_"):
                     print("Stopping: no Snowflake session, so every later block would fail too.")
                     return 1
