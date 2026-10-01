@@ -49,5 +49,5 @@ def test_baseline_window_cannot_read_local_files_and_skill_window_is_unchanged()
     # the variadic flags come last, so neither can swallow the prompt or each other's values
     assert baseline[baseline.index("--allowedTools") + 1:baseline.index("--disallowedTools")] == [
         "mcp__snowflake__run_query", "mcp__snowflake__status"]
-    assert baseline[baseline.index("--disallowedTools") + 1:] == ["Read", "Grep", "Glob", "Bash"]
+    assert baseline[baseline.index("--disallowedTools") + 1:] == ["Read", "Grep", "Glob", "Bash", "Monitor", "Task", "Workflow", "Write", "Edit", "NotebookEdit"]
     assert skill[2] == baseline[2] == "Prompt text"

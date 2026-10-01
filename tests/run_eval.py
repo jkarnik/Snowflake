@@ -43,7 +43,7 @@ def build_command(prompt: str, mode: str) -> list[str]:
         # Local file and shell tools are denied so a baseline can't read the skill's notes in the repo.
         cmd += ["--disable-slash-commands",
                 "--allowedTools", "mcp__snowflake__run_query", "mcp__snowflake__status",
-                "--disallowedTools", "Read", "Grep", "Glob", "Bash"]
+                "--disallowedTools", "Read", "Grep", "Glob", "Bash", "Monitor", "Task", "Workflow", "Write", "Edit", "NotebookEdit"]
     return cmd
 
 
