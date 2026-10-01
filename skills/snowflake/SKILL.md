@@ -39,9 +39,10 @@ Answer New Relic business-data questions in plain English with read-only Snowfla
    1. the result in plain English
    2. a small table, if useful
    3. "How I got this": definitions, tables, date range and caveats
-   4. the SQL
+   4. the SQL you ran, in a code block
 
-   Link the question folder. Never paste a large result; the preview and the CSV path are enough.
+   Link the question folder, but the link doesn't replace the SQL. Never paste a large result; the
+   preview and the CSV path are enough.
 
 ### When `run_query` returns an error
 
