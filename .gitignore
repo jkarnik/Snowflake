@@ -1,15 +1,8 @@
 # Python virtual environment (regenerable from scratch)
 .venv/
 
-# Snowflake persistent-session runtime artifacts (FIFOs, temp SQL)
-.sfrun/
-.sf_server.log
-
-# Per-session working folders (logs, generated SQL, result exports, scratch)
-runs/
-
-# Ad-hoc SQL scratch/output
-*.out
+# Everything the skill produces: question folders, server logs, originals, eval values
+/runs/
 
 # Python caches
 __pycache__/
