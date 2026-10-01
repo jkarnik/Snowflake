@@ -1,81 +1,61 @@
-# Snowflake Query Toolkit
+# Snowflake skill
 
-A small set of scripts for querying Snowflake without triggering a browser SSO
-popup on every query. Snowflake auth here is Okta SSO via `externalbrowser`, so
-each new Python process would normally re-authenticate. The "skill" this repo
-provides is a **persistent session**: authenticate once, then run any number of
-queries instantly.
-
-- **`README.md`** (this file) — what the scripts are and how they fit together.
-- **[CLAUDE.md](CLAUDE.md)** — the operating runbook (exact connect/run commands).
-- **[Snowflake.md](Snowflake.md)** — what the data is (tables, business rules).
-
-## The skill: one persistent session
-
-Instead of connecting per query, one background process holds the connection
-open and serves queries over named pipes (FIFOs). You authenticate in the
-browser **once** per work session; every query after that returns with no
-re-auth.
-
-```
-  ./q  ──SQL──▶  cmd.fifo  ──▶  session_server.py  ──runs on live connection
-   ▲                                    │
-   └────── results ◀── resp.fifo ◀──────┘
-```
-
-### Run it
-
-```bash
-# 1. Make this session's working folder + start the session (opens the browser once).
-#    Everything a session produces goes under runs/, keeping the repo root clean.
-RUN="runs/$(date +%Y%m%d-%H%M%S)"; mkdir -p "$RUN"; ln -sfn "${RUN#runs/}" runs/latest
-.venv/bin/python session_server.py > runs/latest/server.log 2>&1 &
-
-# 2. Wait until authenticated
-until grep -q "SESSION READY" runs/latest/server.log; do sleep 1; done
-
-# 3. Query — SQL on stdin, tab-separated results on stdout
-echo "SELECT CURRENT_USER();" | ./q
-
-# 4. Shut down cleanly when done
-echo QUIT > .sfrun/cmd.fifo
-```
-
-Write generated SQL, result exports, CSVs, and any scratch files into
-`runs/latest/` — not the repo root. `runs/` is gitignored.
-
-## Files
-
-### Core session tooling
-
-| File | What it does |
-|------|--------------|
-| `session_server.py` | Long-lived process. Authenticates once, then loops: reads a `.sql` file path from `cmd.fifo`, runs the statements on the open connection, writes tab-separated results to `<file>.out`, and returns that path on `resp.fifo`. Splits input on `;`; errors are written as `ERROR:` + traceback. Exits on `QUIT`. |
-| `q` | Thin client (zsh). Reads SQL from stdin, hands it to the running server via the FIFOs, and prints the results. This is the everyday entry point — pipe SQL in, get results out. |
-
-### Runtime / environment
+A personal Claude Code skill that answers New Relic business-data questions from Snowflake:
+customer accounts and Salesforce details, account owners, NPM adoption and ingest, billing and
+consumption, and which table holds what. Ask in plain English from any project, or type
+`/snowflake`. Type `/snowflake learn` to turn past questions into better notes.
 
 | Path | What it is |
-|------|------------|
-| `.sfrun/` | Runtime artifacts — the `cmd.fifo` / `resp.fifo` pipes and temp `.sql`/`.out` files. Gitignored; recreated each time the server starts. |
-| `runs/<timestamp>/` | One folder per work session holding the server log and all query artifacts. `runs/latest` symlinks the current session. Gitignored. |
-| `runs/latest/server.log` | Current session's server stdout/stderr (look here for `SESSION READY`). |
-| `.venv/` | Python env with `snowflake-connector-python[secure-local-storage]`. Run everything with `.venv/bin/python`. |
+|---|---|
+| `skills/snowflake/SKILL.md` | The skill: when it applies, its workflow and rules |
+| `skills/snowflake/references/` | Notes per question area, improved by `/snowflake learn` |
+| `skills/snowflake/mcp_server/` | The `snowflake` MCP server: read-only guard, Okta login on first use, CSV results |
+| `skills/snowflake/evals/` | End-to-end test prompts (placeholders only) |
+| `tests/` | Unit tests and check scripts |
+| `runs/` (gitignored) | One folder per question (`runs/<date>/<question>/`) with its SQL, CSVs and `summary.md`; server logs in `runs/logs/` |
 
+## How it works
 
-## Connection settings
+Each Claude window starts its own `snowflake` server, logged out. The first Snowflake query in a
+window opens an Okta login tab, which takes about 20 seconds. The rest of that window reuses the
+login. Windows that never query Snowflake never ask. The server runs only `SELECT`, `SHOW` and
+`DESCRIBE`, and refuses everything else before it reaches Snowflake.
 
-All scripts connect with the same parameters (edit in `session_server.py`
-if yours differ):
+## Install (once)
 
-- **account** `pda47359.us-east-1`
-- **user** `JKARNIK`
-- **authenticator** `externalbrowser` (Okta SSO)
-- **role** `FR_PRODUCT_ANALYST`
-- **warehouse** `TEAM_PRODUCT_ANALYST_XSMALL`
+1. `.venv/bin/pip install -r requirements.txt`
+2. Create `~/.snowflake/connections.toml` with mode `600`. It holds no password; Okta handles the login.
 
-## Query discipline
+   ```toml
+   [newrelic]
+   account = "pda47359.us-east-1"
+   user = "JKARNIK"
+   authenticator = "externalbrowser"
+   role = "FR_PRODUCT_ANALYST"
+   warehouse = "TEAM_PRODUCT_ANALYST_XSMALL"
+   ```
+3. `claude mcp add --scope user snowflake -- "$PWD/.venv/bin/python" "$PWD/skills/snowflake/mcp_server/server.py"`
+4. `ln -s "$PWD/skills/snowflake" ~/.claude/skills/snowflake`
+5. Restart open Claude windows. Then run `.venv/bin/python tests/check_install.py`; it should print five `PASS` lines and open no login.
 
-From [Snowflake.md](Snowflake.md) — always `LIMIT` while exploring, use date
-filters or `SAMPLE` on 100M+ row tables, and **never** `DELETE`/`DROP` on
-`USAGE_AND_RATING.USAGE.ALL_DAILY_USAGE` (append-only financial system of record).
+## Update
+
+Edits in this repo reach new Claude windows without reinstalling. After changing
+`requirements.txt`, repeat install step 1. Note edits from `/snowflake learn` stay uncommitted
+until you commit them.
+
+## Uninstall
+
+`claude mcp remove --scope user snowflake`, then `rm ~/.claude/skills/snowflake`. Optionally delete
+`~/.snowflake/connections.toml`.
+
+## Tests
+
+- Unit tests, no Snowflake: `.venv/bin/python -m pytest`
+- Note queries, offline: `.venv/bin/python tests/check_notes.py --dry-run`
+- Live checks, which open Okta logins:
+  - `.venv/bin/python tests/check_notes.py`: every example query in the notes (one login)
+  - `.venv/bin/python tests/live_login_check.py`: no login without a query, one login for three queries
+  - `.venv/bin/python tests/run_eval.py <E1..E10> <skill|baseline>`: one eval in a fresh window
+
+  They read real test values (company names, account IDs) from `runs/evals/values.toml`, which is gitignored.
