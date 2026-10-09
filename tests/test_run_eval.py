@@ -28,7 +28,28 @@ def test_facts_reads_a_stream_json_transcript():
         {"type": "result", "result": "Answer text", "permission_denials": []},
     ]
     assert facts(events) == {"skill_triggered": True, "status_calls": 1, "run_query_calls": 1,
-                             "permission_denials": 0, "answer": "Answer text", "result_seen": True}
+                             "permission_denials": 0, "answer": "Answer text", "result_seen": True,
+                             "model": None, "claude_code_version": None}
+
+
+def test_facts_records_the_model_and_cli_version_from_the_init_event():
+    # `--model sonnet` is an alias, so the window's real model and the CLI build are only known from init.
+    events = [
+        {"type": "system", "subtype": "hook_started", "model": "not-the-init-event"},
+        {"type": "system", "subtype": "init", "model": "claude-sonnet-5-5", "claude_code_version": "2.1.285"},
+        {"type": "result", "result": "Answer text", "permission_denials": []},
+    ]
+    found = facts(events)
+    assert found["model"] == "claude-sonnet-5-5"
+    assert found["claude_code_version"] == "2.1.285"
+
+
+def test_facts_leaves_model_and_cli_version_empty_without_an_init_event():
+    found = facts([{"type": "result", "result": "Answer text", "permission_denials": []}])
+    assert found["model"] is None
+    assert found["claude_code_version"] is None
+    assert facts([])["model"] is None
+    assert facts([])["claude_code_version"] is None
 
 
 def test_facts_flags_a_transcript_without_a_result():

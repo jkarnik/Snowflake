@@ -48,9 +48,15 @@ def build_command(prompt: str, mode: str) -> list[str]:
 
 
 def facts(events: list[dict]) -> dict:
-    """What happened in a stream-json transcript: skill use, tool calls, denials, final answer."""
+    """What happened in a stream-json transcript: skill use, tool calls, denials, final answer.
+
+    `--model sonnet` is an alias, so the model and the CLI build can change between windows. They are
+    read from the init event (None if the transcript has none) so a grader can tell which pairs match.
+    """
     uses = [part for event in events if event.get("type") == "assistant"
             for part in event.get("message", {}).get("content", []) if part.get("type") == "tool_use"]
+    init = next((event for event in events
+                 if event.get("type") == "system" and event.get("subtype") == "init"), {})
     result = next((event for event in events if event.get("type") == "result"), None)
     return {
         "skill_triggered": any(u["name"] == "Skill" and u.get("input", {}).get("skill") == "snowflake"
@@ -60,6 +66,8 @@ def facts(events: list[dict]) -> dict:
         "permission_denials": len(result.get("permission_denials", [])) if result else 0,
         "answer": result.get("result", "") if result else "",
         "result_seen": result is not None,
+        "model": init.get("model"),
+        "claude_code_version": init.get("claude_code_version"),
     }
 
 
