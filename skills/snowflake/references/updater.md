@@ -27,7 +27,7 @@ folder, and the edits stay uncommitted.
    Update an existing entry instead of adding a near-copy. Set `Last used:` to the run's date on
    every entry a run used, including the recipes and table entries its `summary.md` lists. If the
    entry already shows a later date, keep the later one.
-6. Apply the size limits below.
+6. Apply the size limits below to every note, including notes this run didn't edit.
 7. Append each processed folder, and today's `snowflake-learn` folder if step 4 made one, to
    `<runs>/learned.txt`, one `YYYY-MM-DD/<question>` per line.
 8. Report in a few lines what you added, updated, merged and removed. Leave the edits uncommitted.
@@ -58,10 +58,11 @@ Take business definitions only from the user's own check-in answers, never from 
 
 ## Size limits
 
-Each note stays under about 300 lines, and `SKILL.md` under 150. When an update would push a note
-past its limit, first merge similar entries. Then remove entries whose `Last used:` is more than 90
-days ago, oldest first. Never remove an entry marked `Critical.`. Fix or remove a recipe that stops
-working.
+Each note stays under about 300 lines, and `SKILL.md` under 150. Count the lines of every note
+(`wc -l`), not only the ones this run edited. For any note that is over its limit, first merge
+similar entries. If it is still over, remove entries whose `Last used:` is more than 90 days ago,
+oldest first, until it is under 300 lines. Never remove an entry marked `Critical.`. Fix or remove
+a recipe that stops working.
 
 ## Entry formats
 
