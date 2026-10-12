@@ -90,6 +90,16 @@ def test_default_runs_dir_is_at_the_repo_root():
     assert (server_module.REPO / "skills" / "snowflake" / "mcp_server" / "server.py").is_file()
 
 
+@pytest.mark.anyio
+async def test_both_tools_are_read_only_so_claude_code_can_run_them_in_parallel(make):
+    server, _, _ = make()
+    async with Client(server) as client:
+        tools = (await client.list_tools()).tools
+    # Claude Code runs an MCP tool alongside others only when its annotations set readOnlyHint.
+    hints = {t.name: t.annotations.read_only_hint if t.annotations else None for t in tools}
+    assert hints == {"status": True, "run_query": True}
+
+
 TODAY = date.today().isoformat()
 
 

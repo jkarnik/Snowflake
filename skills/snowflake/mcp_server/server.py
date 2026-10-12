@@ -6,6 +6,7 @@ from typing import Annotated
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp_types import ToolAnnotations
 from pydantic import Field
 
 from connection import LazyConnection, classify_error, default_connect
@@ -19,7 +20,7 @@ REPO = Path(__file__).resolve().parents[3]
 def build_server(runs_dir: Path, connection: LazyConnection, log: EventLog) -> MCPServer:
     server = MCPServer("snowflake")
 
-    @server.tool(structured_output=False)
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True), structured_output=False)
     def status() -> str:
         """Say whether this Claude window is logged in to Snowflake. Never logs in; no side effects.
 
@@ -38,7 +39,7 @@ def build_server(runs_dir: Path, connection: LazyConnection, log: EventLog) -> M
         return (f"{line}\nRuns folder: {runs_dir}\n"
                 f"Unlearned question folders: {len(unlearned_folders(runs_dir))}")
 
-    @server.tool(structured_output=False)
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True), structured_output=False)
     def run_query(
         sql: Annotated[str, Field(description="Exactly one SELECT, SHOW or DESCRIBE statement.")],
         question: Annotated[str, Field(description=(
