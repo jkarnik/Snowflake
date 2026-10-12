@@ -305,7 +305,10 @@ Steps:
    CSVs.
 3. Pick the items that clear the bar below.
 4. Rewrite each item with `{{placeholders}}`. Re-run every new or changed recipe through
-   `run_query`, and drop any that fail.
+   `run_query`. Only `SQL_ERROR`, `BLOCKED` or `TIMEOUT` drops a recipe. On a login or internal
+   error (`LOGIN_TIMEOUT`, `LOGIN_EXPIRED`, `LOGIN_FAILED` or `INTERNAL_ERROR`), it retries that
+   call once. If the retry fails with one of those codes again, it stops before step 5: it changes
+   no notes, leaves `learned.txt` alone and asks the user to run `/snowflake learn` again.
 5. Write the new entries:
    - table entries go in `tables.md`
    - recipes, pitfalls and confirmed definitions go in the matching area note
