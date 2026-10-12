@@ -23,8 +23,16 @@ login. Windows that never query Snowflake never ask. The server runs only `SELEC
 
 ## Install (once)
 
-1. `.venv/bin/pip install -r requirements.txt`
-2. Create `~/.snowflake/connections.toml` with mode `600`. It holds no password; Okta handles the login.
+Run every command in this README from the repo folder: `cd ~/Code/Snowflake`
+
+1. Create the Python environment (`.venv`), then install the packages:
+
+   ```sh
+   python3.14 -m venv .venv
+   .venv/bin/pip install -r requirements.txt
+   ```
+2. Create the two folders the steps below use: `mkdir -p ~/.snowflake ~/.claude/skills`
+3. Create `~/.snowflake/connections.toml` with the text below. It holds no password; Okta handles the login.
 
    ```toml
    [newrelic]
@@ -34,9 +42,10 @@ login. Windows that never query Snowflake never ask. The server runs only `SELEC
    role = "FR_PRODUCT_ANALYST"
    warehouse = "TEAM_PRODUCT_ANALYST_XSMALL"
    ```
-3. `claude mcp add --scope user snowflake -- "$PWD/.venv/bin/python" "$PWD/skills/snowflake/mcp_server/server.py"`
-4. `ln -s "$PWD/skills/snowflake" ~/.claude/skills/snowflake`
-5. Restart open Claude windows. Then run `.venv/bin/python tests/check_install.py`; it should print five `PASS` lines and open no login.
+4. Make that file private to you: `chmod 600 ~/.snowflake/connections.toml`
+5. `claude mcp add --scope user snowflake -- "$PWD/.venv/bin/python" "$PWD/skills/snowflake/mcp_server/server.py"`
+6. `ln -s "$PWD/skills/snowflake" ~/.claude/skills/snowflake`
+7. Restart open Claude windows. Then run `.venv/bin/python tests/check_install.py`; it should print five `PASS` lines and open no login.
 
 ## Update
 
@@ -53,9 +62,9 @@ until you commit them.
 
 - Unit tests, no Snowflake: `.venv/bin/python -m pytest`
 - Note queries, offline: `.venv/bin/python tests/check_notes.py --dry-run`
-- Live checks, which open Okta logins:
+- Live checks, which open Okta logins (run `live_login_check.py` first):
+  - `.venv/bin/python tests/live_login_check.py`: no login without a query, one login for three queries; it creates `runs/evals/values.toml`
   - `.venv/bin/python tests/check_notes.py`: every example query in the notes (one login)
-  - `.venv/bin/python tests/live_login_check.py`: no login without a query, one login for three queries
   - `.venv/bin/python tests/run_eval.py <E1..E10> <skill|baseline>`: one eval in a fresh window
 
-  They read real test values (company names, account IDs) from `runs/evals/values.toml`, which is gitignored.
+  `check_notes.py` and `run_eval.py` read real test values (company names, account IDs) from `runs/evals/values.toml`, which is gitignored.
