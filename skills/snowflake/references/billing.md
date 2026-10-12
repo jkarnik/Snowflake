@@ -29,7 +29,8 @@ Upstream, the product-consumption daily view has `consuming_account_id`, `master
 `usage_type`, `dp_gigabytes_ingested`, `consumption`, `billable_consumption`, `estimated_cost`,
 `free_limit` and `processed_time` (use it to spot restreams). It is built from
 `RAW.PRODUCT_CONSUMPTION.PRODUCT_CONSUMPTION_PRODUCTION_JSON` (`…_EU_PRODUCTION_JSON` for EU). Find
-the view's exact name with the "Find tables" recipe in `finding-data.md`, searching `daily_view`.
+the view's exact name with the "Find tables by name" recipe in `finding-data.md`, using `RAW` (the
+database holding its source) as the database and `daily_view` as the search term.
 
 ## Product lines and metrics
 
@@ -86,4 +87,4 @@ ORDER BY PRODUCT_LINE, METRIC
 
 - **Repeated inserts double-count.** Keep one row per account, `START_TIME`, `METRIC` and `PRODUCT_LINE`: `ROW_NUMBER()` over that partition, latest `INSERTED_AT` first. Critical. Last used: 2026-09-30.
 - **Gauges aren't additive.** `FullPlatformUsers`, `FullUsers` and `CoreUsers` are levels. Never `SUM` them across days. Critical. Last used: 2026-09-30.
-- **Scan size.** `ALL_DAILY_USAGE` has hundreds of millions of rows on an XSMALL warehouse. Always filter by account and a date range, or use `SAMPLE` while exploring. Last used: 2026-09-30.
+- **Scan size.** `ALL_DAILY_USAGE` is one of the largest tables (billions of rows), and queries run on an XSMALL warehouse. Always filter by account and a date range, or use `SAMPLE` while exploring. Last used: 2026-09-30.
