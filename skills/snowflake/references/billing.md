@@ -52,7 +52,7 @@ joins the usage with Zuora subscriptions into `ALL_DAILY_USAGE`. Business Applic
 
 ### Daily GB ingested by one account
 Use for: "how much data did account X ingest per day". Applies the de-duplication rule. Critical.
-Last used: 2026-09-30.
+Last used: 2026-10-09.
 
 ```sql
 SELECT DATE(START_TIME) AS USAGE_DATE, SUM(QUANTITY) AS GB_INGESTED
@@ -72,7 +72,7 @@ ORDER BY USAGE_DATE
 ```
 
 ### What an account is metered on
-Use for: "which products or metrics does account X use". Last used: 2026-09-30.
+Use for: "which products or metrics does account X use". Last used: 2026-10-09.
 
 ```sql
 SELECT PRODUCT_LINE, METRIC, METRIC_TYPE, COUNT(*) AS DAY_ROWS
@@ -83,8 +83,31 @@ GROUP BY PRODUCT_LINE, METRIC, METRIC_TYPE
 ORDER BY PRODUCT_LINE, METRIC
 ```
 
+### Daily GB ingested by one account, US and EU
+Use for: daily billed GB when "Daily GB ingested by one account" returns no rows, or for an EU
+account. Reads the billing pipeline's customer-rollup views for both regions; `REGION` shows which
+one holds the account, and `N_ROWS` above 1 means repeated rows. Last used: 2026-10-09.
+
+```sql
+WITH R AS (
+    SELECT 'US' AS REGION, * FROM CONFORMED_USAGE_RATING.QBP_BILLING_PIPELINE.STG_QBP_BILLING_PIPELINE_USAGE_DAILY_BILLABLE_CUSTOMERROLLUP_PROD
+    UNION ALL
+    SELECT 'EU', * FROM CONFORMED_USAGE_RATING.QBP_BILLING_PIPELINE.STG_QBP_BILLING_PIPELINE_USAGE_DAILY_BILLABLE_CUSTOMERROLLUP_EU_PROD
+)
+SELECT REGION, CUSTOMER_ID, DATE(START_TIME) AS USAGE_DATE,
+       ROUND(SUM(USAGE), 2) AS GB_INGESTED, ROUND(SUM(BILLABLE_USAGE), 2) AS GB_BILLABLE,
+       COUNT(*) AS N_ROWS
+FROM R
+WHERE TELEMETRY_ACCOUNT_ID = {{account_id}}
+  AND START_TIME >= '{{start_date}}' AND START_TIME < '{{end_date}}'
+  AND METRIC = 'GigabytesIngested'
+GROUP BY ALL
+ORDER BY REGION, CUSTOMER_ID, USAGE_DATE
+```
+
 ## Pitfalls
 
 - **Repeated inserts double-count.** Keep one row per account, `START_TIME`, `METRIC` and `PRODUCT_LINE`: `ROW_NUMBER()` over that partition, latest `INSERTED_AT` first. Critical. Last used: 2026-09-30.
 - **Gauges aren't additive.** `FullPlatformUsers`, `FullUsers` and `CoreUsers` are levels. Never `SUM` them across days. Critical. Last used: 2026-09-30.
 - **Scan size.** `ALL_DAILY_USAGE` is one of the largest tables (billions of rows), and queries run on an XSMALL warehouse. Always filter by account and a date range, or use `SAMPLE` while exploring. Last used: 2026-09-30.
+- **No billing rows doesn't mean no usage.** `ALL_DAILY_USAGE` returned nothing, over several months, for an EU account that was ingesting data. Its usage sat only in the billing pipeline's EU view. Before reporting zero usage, run "Daily GB ingested by one account, US and EU". Critical. Last used: 2026-10-09.

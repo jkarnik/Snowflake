@@ -54,7 +54,7 @@ LIMIT 100
 ```
 
 ### Company name for an account ID
-Use for: naming the accounts in a usage result. Last used: 2026-09-30.
+Use for: naming the accounts in a usage result. Last used: 2026-10-09.
 
 ```sql
 SELECT R.RPM_ACCOUNT_ID, R.RPM_ACCOUNT_NAME, ACC.SFDC_ACCOUNT_NAME
@@ -97,9 +97,9 @@ SHOW TABLES IN SCHEMA CONFORMED.COMPACT_ENTITLEMENTS_V2
 
 - **Match names loosely.** Legal names carry suffixes and non-ASCII letters (`A.Ş.`, `Pty Ltd`), and pasted copies can be garbled. Use `ILIKE '%…%'` on a distinctive word, then confirm with the user if several companies match. Last used: 2026-09-30.
 - **Deleted records linger.** Filter `IS_DELETED = FALSE` on `SFDC_RPM_RECORD_D` and `ACCOUNT_TEAM_MEMBER_D`, or former owners appear. Critical. Last used: 2026-09-30.
-- **RPM IDs are text in Salesforce but numbers in usage.** `RPM_ACCOUNT_ID` on `SFDC_RPM_RECORD_D` is text, and some IDs aren't numeric, while `BILLABLE_RPM_ACCOUNT_ID` is a number. Joining the two directly, or comparing the text column to a bare number, fails with a numeric-cast error. Quote an ID typed into a query (`'{{account_id}}'`), and cast the usage side when joining: `R.RPM_ACCOUNT_ID = U.BILLABLE_RPM_ACCOUNT_ID::VARCHAR`. Last used: 2026-10-01.
+- **RPM IDs are text in Salesforce but numbers in usage.** `RPM_ACCOUNT_ID` on `SFDC_RPM_RECORD_D` is text, and some IDs aren't numeric, while `BILLABLE_RPM_ACCOUNT_ID` is a number. Joining the two directly, or comparing the text column to a bare number, fails with a numeric-cast error. Quote an ID typed into a query (`'{{account_id}}'`), and cast the usage side when joining: `R.RPM_ACCOUNT_ID = U.BILLABLE_RPM_ACCOUNT_ID::VARCHAR`. Last used: 2026-10-09.
 - **One company, many accounts.** A Salesforce account can have several RPM accounts. Show them all, not just the first. Last used: 2026-09-30.
-- **Rolling accounts up to clients.** Group by `SUBSCRIPTION_ACCOUNT_ID`, the customer contract (`CC-…`). Label each client with its Salesforce name through `SFDC_RPM_RECORD_D` → `SFDC_ACCOUNT_D`, and fall back to the `ORGANIZATION_DB` org name, since many orgs are just named "Organization …". Last used: 2026-09-30.
-- **New Relic's own accounts.** Internal and test accounts sit in the orgs named "New Relic Production US" and "New Relic Production EU". Exclude them from customer counts. Critical. Last used: 2026-09-30.
+- **Rolling accounts up to clients.** Group by `SUBSCRIPTION_ACCOUNT_ID`, the customer contract (`CC-…`). Label each client with its Salesforce name through `SFDC_RPM_RECORD_D` → `SFDC_ACCOUNT_D`, and fall back to the `ORGANIZATION_DB` org name, since many orgs are just named "Organization …". Last used: 2026-10-09.
+- **New Relic's own accounts.** Internal and test accounts sit in the orgs named "New Relic Production US" and "New Relic Production EU". Exclude them from customer counts. Critical. Last used: 2026-10-09.
 - **`CONCAT_WS` drops the whole address.** In Snowflake it returns NULL when any part is NULL. Join address parts with `ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(…), ', ')`. Critical. Last used: 2026-09-30.
 - **Street line breaks.** `BILLING_STREET` holds `CHR(10)` and `CHR(13)`. Replace both before showing an address. Last used: 2026-09-30.
