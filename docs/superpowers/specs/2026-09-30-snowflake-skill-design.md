@@ -354,7 +354,7 @@ requirements.txt               pinned Python dependencies
 skills/snowflake/SKILL.md      main skill document (moved from Snowflake.md)
 skills/snowflake/references/   npm.md, customers.md, billing.md, finding-data.md, tables.md, updater.md
 skills/snowflake/mcp_server/   guard.py, results.py, server.py
-skills/snowflake/evals/        end-to-end prompts and expected behaviour (placeholders only)
+tests/evals.md                 end-to-end prompts and expected behaviour (placeholders only)
 tests/                         unit tests, check scripts, made-up runs for the updater tests
 docs/superpowers/              this spec and the implementation plan
 ```
@@ -444,7 +444,7 @@ These use headless Claude windows, as in the spike, and check the server log:
 
 ### 10.4 End-to-end evals
 
-The prompts live in `skills/snowflake/evals/` with placeholders. Their real values live in
+The prompts live in `tests/evals.md` with placeholders. Their real values live in
 `runs/evals/values.toml`. Each prompt runs in a fresh Claude window, first without the skill as a
 baseline, then with it.
 

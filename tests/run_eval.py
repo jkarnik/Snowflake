@@ -5,7 +5,8 @@ Usage: .venv/bin/python tests/run_eval.py <E1..E10> <skill|baseline>
 Fills {{placeholders}} from runs/evals/values.toml and runs from an empty scratch folder outside
 the repo. Saves the transcript, answer and facts under runs/evals/<YYYY-MM-DD>/<id>-<mode>/, and
 prints the facts a grader needs. It never grades the answer. Baseline mode turns skills off and
-denies Read, Grep, Glob and Bash, so a baseline window can't read the skill's notes from the repo.
+denies the local file, shell and subagent tools (Read, Grep, Glob, Bash, Monitor, Task, Workflow,
+Write, Edit, NotebookEdit), so a baseline window can't read the skill's notes from the repo.
 """
 import json
 import re
@@ -17,7 +18,7 @@ from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-EVALS = REPO / "skills" / "snowflake" / "evals" / "evals.md"
+EVALS = REPO / "tests" / "evals.md"
 VALUES = REPO / "runs" / "evals" / "values.toml"
 CLAUDE = "/opt/homebrew/bin/claude"
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")

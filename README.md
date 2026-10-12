@@ -10,7 +10,7 @@ consumption, and which table holds what. Ask in plain English from any project, 
 | `skills/snowflake/SKILL.md` | The skill: when it applies, its workflow and rules |
 | `skills/snowflake/references/` | Notes per question area, improved by `/snowflake learn` |
 | `skills/snowflake/mcp_server/` | The `snowflake` MCP server: read-only guard, Okta login on first use, CSV results |
-| `skills/snowflake/evals/` | End-to-end test prompts (placeholders only) |
+| `tests/evals.md` | End-to-end test prompts (placeholders only) |
 | `tests/` | Unit tests and check scripts |
 | `runs/` (gitignored) | One folder per question (`runs/<date>/<question>/`) with its SQL, CSVs and `summary.md`; server logs in `runs/logs/` |
 
