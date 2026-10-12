@@ -9,6 +9,7 @@ allowed-tools:
   - Write(~/Code/Snowflake/runs/**)
   - Edit(~/Code/Snowflake/runs/**)
   - Edit(~/Code/Snowflake/skills/snowflake/references/**)
+  - Edit(~/.claude/skills/snowflake/references/**)
 ---
 
 # Snowflake Skill
@@ -28,8 +29,9 @@ Answer New Relic business-data questions in plain English with read-only Snowfla
      result over 100,000 rows, or a time limit above 300 seconds.
 
    Otherwise run straight away.
-4. **Warn before a login.** Call `status` first. If it says "Not logged in", tell the user in one
-   sentence that an Okta login tab is about to open in their browser (about 20 seconds).
+4. **Warn before a login.** Call `status` on its own first, before any query, and wait for its
+   answer. If it says "Not logged in", tell the user in one sentence that an Okta login tab is
+   about to open in their browser (about 20 seconds).
 5. **Run the queries** with `run_query`: `question` is the slug, and `step` names the query. Run
    independent queries in parallel and dependent ones in order.
 6. **Write `summary.md`** in the question folder (the folder of the `SQL:` path that `run_query`
@@ -53,7 +55,7 @@ Answer New Relic business-data questions in plain English with read-only Snowfla
 | `LOGIN_FAILED` | Tell the user the login failed, with the message. The next call retries. |
 | `LOGIN_EXPIRED` | Tell the user a login tab will open, then call again. |
 | `TIMEOUT` | Suggest a narrower query, or ask the user to allow up to 60 minutes (`timeout_seconds` up to 3600). |
-| `SQL_ERROR` | Read the message, fix the query and retry up to two times. After that, tell the user. |
+| `SQL_ERROR` | Read the message. If it's about connecting or the network, not the SQL, don't change the query: tell the user, who may need to reconnect to the VPN. Otherwise fix the query and retry up to two times, then tell the user. |
 | `INTERNAL_ERROR` | Tell the user, and retry at most once. |
 
 If the tools are missing or hang, `/mcp` reconnect or a new window resets the server.
@@ -69,7 +71,7 @@ If the tools are missing or hang, `/mcp` reconnect or a new window resets the se
 - Keep the 5-minute default time limit, and raise it only after the user agrees.
 - Write outputs only to the question's `runs/` folder, never to the current project unless the
   user asks.
-- Customer names and IDs stay in `runs/`. Never write them into the reference notes.
+- Customer data (names, IDs, results) stays in `runs/`. Never write it into the reference notes.
 
 ## Learning
 
