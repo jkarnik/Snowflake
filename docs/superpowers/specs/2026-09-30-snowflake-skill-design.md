@@ -338,9 +338,11 @@ It must also pass at least one of these:
 - near-copies of an existing recipe
 
 **Size limits.** Each reference note stays under about 300 lines, and `SKILL.md` stays under 150.
-When an update would push a note past its limit, the updater first merges similar entries. Then it
-removes entries that no question has used for 90 days, oldest first. It never removes a critical
-entry. A recipe that stops working gets fixed or removed.
+The updater checks every note, not only the ones it edited. For a note over its limit, it first
+merges similar entries. Then it removes entries that no question has used for 90 days, oldest
+first, until the note is under its limit. It never removes a critical entry. A recipe that stops
+working gets fixed, and is removed only if it isn't critical. If a note is still over its limit
+after all that, the report says so.
 
 ## 7. Outputs and file layout
 
