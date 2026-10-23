@@ -57,18 +57,20 @@ Governance tags: `data_classification` (Public, Internal, Confidential, Restrict
 
 ### Find tables by name
 Use for: "is there a table with …". Search `CONFORMED`, `TRANSFORMED` and `REPORTING` one at a
-time. Last used: 2026-10-09.
+time. `LAST_ALTERED` shows which look-alikes are still loaded; the backup schemas are left out
+because they flood `TRANSFORMED`. Last used: 2026-10-22.
 
 ```sql
-SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ROW_COUNT
+SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ROW_COUNT, LAST_ALTERED
 FROM {{database}}.INFORMATION_SCHEMA.TABLES
 WHERE LOWER(TABLE_NAME) LIKE '%{{search_term}}%'
+  AND TABLE_SCHEMA NOT ILIKE '%BACKUP%' AND TABLE_SCHEMA NOT ILIKE 'BKP%'
 ORDER BY TABLE_SCHEMA, TABLE_NAME
 LIMIT 200
 ```
 
 ### Find columns by name
-Use for: "which table has a column for …". Last used: 2026-10-09.
+Use for: "which table has a column for …". Last used: 2026-10-21.
 
 ```sql
 SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE
@@ -86,7 +88,7 @@ SHOW SCHEMAS IN DATABASE {{database}}
 ```
 
 ### Look at one table
-Use `DESCRIBE` for columns and types, then a 5-row sample. Last used: 2026-10-09.
+Use `DESCRIBE` for columns and types, then a 5-row sample. Last used: 2026-10-22.
 
 ```sql
 DESCRIBE TABLE {{database}}.{{schema}}.{{table}}
@@ -94,6 +96,17 @@ DESCRIBE TABLE {{database}}.{{schema}}.{{table}}
 
 ```sql
 SELECT * FROM {{database}}.{{schema}}.{{table}} LIMIT 5
+```
+
+### Search every column of a table for a word
+Use for: "does this table mention X anywhere", when you don't know which column holds it. `OBJECT_CONSTRUCT(*)`
+works only in a SELECT list, so wrap the table in a subquery. Zero rows means no row mentions the word.
+Last used: 2026-10-21.
+
+```sql
+SELECT O FROM (SELECT OBJECT_CONSTRUCT(*) AS O FROM {{database}}.{{schema}}.{{table}})
+WHERE TO_VARCHAR(O) ILIKE '%{{search_term}}%'
+LIMIT 50
 ```
 
 ### dbt model, source and exposure metadata
@@ -113,7 +126,8 @@ SELECT * FROM CONFORMED.DBT_ARTIFACTS.DIM_DBT__EXPOSURES LIMIT 20
 
 ## Pitfalls
 
-- **One database at a time.** `INFORMATION_SCHEMA` covers only its own database, so search each one. Last used: 2026-10-09.
+- **One database at a time.** `INFORMATION_SCHEMA` covers only its own database, so search each one. Last used: 2026-10-22.
+- **Look-alike tables can be dead.** A table can keep its name after a newer one replaces it. Check `LAST_ALTERED` in "Find tables by name" before trusting a table, and prefer the one altered in the last day or two. `FINANCE.MT_DENORM_CONSUMPTION_DAILY_METRICS` was the stale twin of `…_HEADER` (`billing.md`). Last used: 2026-10-22.
 - **Never search the whole account.** `SHOW TABLES LIKE … IN ACCOUNT` ran past the 5-minute limit or came back empty every time, and a column search of `SNOWFLAKE.ACCOUNT_USAGE.COLUMNS` timed out too. List databases with `SHOW DATABASES`, which takes seconds, then search the likely ones with "Find tables by name" or "Find columns by name". Last used: 2026-10-09.
 - **Views have no row count.** `ROW_COUNT` is empty for views, which are most of `CONFORMED` and `REPORTING`. Last used: 2026-09-30.
 - **Never `USE`.** The guard refuses `USE`. Write fully qualified `DATABASE.SCHEMA.TABLE` names, which also work across databases. Critical. Last used: 2026-09-30.
