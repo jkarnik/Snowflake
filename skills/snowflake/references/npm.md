@@ -62,7 +62,7 @@ ORDER BY USAGE_DATE
 ```
 
 ### NPM ingest GB by subgroup
-Use for: "NPM ingest split into SNMP, syslog, flow and traps". Last used: 2026-10-09.
+Use for: "NPM ingest split into SNMP, syslog, flow and traps". Last used: 2026-11-03.
 
 ```sql
 SELECT CASE EVENT_NAME
@@ -81,7 +81,7 @@ ORDER BY GB DESC
 ```
 
 ### Top accounts by NPM ingest
-Use for: the biggest NPM users in a period. Last used: 2026-10-13.
+Use for: the biggest NPM users in a period. For one subgroup such as syslog, add `AND PRODUCT_FAMILY_SUBGROUP = 'Syslog'` and `AND COALESCE(INSTRUMENTATION_NAME, '') <> 'ktranslate-health'` (ktranslate's own logs); group by `SUB_ACCOUNT_ID` for accounts rather than contracts. Last used: 2026-11-03.
 
 ```sql
 SELECT SUBSCRIPTION_ACCOUNT_ID, SUM(TOTAL_GB) AS GB
@@ -95,7 +95,7 @@ LIMIT 20
 
 ### Network data sources for an account
 Use for: "what sends network data to account X": collector, profile (`INSTRUMENTATION_NAME`),
-version and subgroup, including Mist and the network agent. Last used: 2026-10-09.
+version and subgroup, including Mist and the network agent. Last used: 2026-10-30.
 
 ```sql
 SELECT INSTRUMENTATION_PROVIDER, COLLECTOR_NAME, INSTRUMENTATION_NAME, INSTRUMENTATION_VERSION,
@@ -117,7 +117,7 @@ ORDER BY GB DESC
 Use for: "list our networking customers with their daily data and whether they pay", and the base for
 counts, growth or account-team lists. A client is a customer contract; `{{end_date}}` is exclusive,
 and the snapshot tables are read on its previous day. To add the AE, SC and TSM, join the result's
-contract to a Salesforce account (see "Account owners" in `customers.md`). Last used: 2026-10-23.
+contract to a Salesforce account (see "Account owners" in `customers.md`). Last used: 2026-11-03.
 
 ```sql
 WITH AMAP AS (
@@ -209,6 +209,21 @@ WHERE "DATE" >= '{{start_date}}' AND "DATE" < '{{end_date}}'
        OR INSTRUMENTATION_PROVIDER ILIKE '%{{search_term}}%')
 GROUP BY ALL
 ORDER BY AVG_GB_DAY DESC
+```
+
+### SNMP device profiles in use
+Use for: "which device profiles or vendors do customers poll over SNMP". In II, `INSTRUMENTATION_NAME` on `EVENT_NAME = 'Metric'` rows is the ktranslate device profile (`cisco-catalyst`, `fortinet-fortigate`, …). `heartbeat`, `ping`, `snmp` and `meraki*` aren't device profiles. `base` is the generic fallback when no vendor profile matched, and hand-built profiles carry custom names. II has no device counts or sysObjectID, so demand is accounts and GB. For customers, map accounts to contracts and drop New Relic's own as in "Networking clients". Last used: 2026-10-30.
+
+```sql
+SELECT INSTRUMENTATION_NAME, INSTRUMENTATION_PROVIDER, COLLECTOR_NAME,
+       COUNT(DISTINCT SUB_ACCOUNT_ID) AS ACCOUNTS,
+       ROUND(SUM(TOTAL_GB), 1) AS GB
+FROM TRANSFORMED.PRODUCT_CONSUMPTION.NRDB_TDP_USAGE_DAILY_F
+WHERE "DATE" >= '{{start_date}}' AND "DATE" < '{{end_date}}'
+  AND EVENT_NAME = 'Metric'
+  AND (USAGE_CATEGORY = 'NetworkMonitoring' OR COLLECTOR_NAME = 'network-agent')
+GROUP BY ALL
+ORDER BY ACCOUNTS DESC
 ```
 
 ## Pitfalls

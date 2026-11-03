@@ -58,7 +58,7 @@ Governance tags: `data_classification` (Public, Internal, Confidential, Restrict
 ### Find tables by name
 Use for: "is there a table with …". Search `CONFORMED`, `TRANSFORMED` and `REPORTING` one at a
 time. `LAST_ALTERED` shows which look-alikes are still loaded; the backup schemas are left out
-because they flood `TRANSFORMED`. Last used: 2026-10-22.
+because they flood `TRANSFORMED`. Last used: 2026-11-03.
 
 ```sql
 SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ROW_COUNT, LAST_ALTERED
@@ -70,7 +70,7 @@ LIMIT 200
 ```
 
 ### Find columns by name
-Use for: "which table has a column for …". Last used: 2026-10-21.
+Use for: "which table has a column for …". `LIMIT 200` cuts off by schema name, so a common word such as `email` never reaches the later schemas (`SFDC`, `USERS_DB`); once you know a likely schema, add `AND TABLE_SCHEMA = '…'`. Last used: 2026-11-03.
 
 ```sql
 SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE
@@ -107,6 +107,13 @@ Last used: 2026-10-21.
 SELECT O FROM (SELECT OBJECT_CONSTRUCT(*) AS O FROM {{database}}.{{schema}}.{{table}})
 WHERE TO_VARCHAR(O) ILIKE '%{{search_term}}%'
 LIMIT 50
+```
+
+### Read a view's definition
+Use for: "what is this view built from", "what does this column mean". `GET_DDL` returns the view's SQL, which names its source tables, plus the comment on each column. The result is one long text cell, so read the saved file, since the preview cuts it off. Last used: 2026-11-03.
+
+```sql
+SELECT GET_DDL('VIEW', '{{database}}.{{schema}}.{{table}}') AS DDL
 ```
 
 ### dbt model, source and exposure metadata

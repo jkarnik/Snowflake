@@ -139,6 +139,81 @@ WHERE X.CREDIT_MONTH >= '{{start_date}}'
 ORDER BY X.SFDC_ACCOUNT_NAME, X.CREDIT_MONTH
 ```
 
+### Network monitoring ARR at effective prices
+Use for: "yearly value of network monitoring ingest if a month's ingest repeats for a year", by contract. Sums each contract's network GB in the window and prices it at the contract's effective price per GB (`MTD_EFF_AMT` ÷ `MTD_ACTUALS_BILLED_QTY` over its `Ingest` rows) on the snapshot of the window's last day. ARR is shown ×12 for a calendar-month window, as the daily rate × 365 for any window, and at contractual prices. `STATUS` separates priced contracts from ones that can't be priced. For a contract list, select from `J` instead of rolling up. For a window before 2026, read `RPMX` and `CCX` on `2026-01-01` (see "Past paid status" in `customers.md`). Consumption value, not booked revenue. Last used: 2026-11-03.
+
+```sql
+WITH NPM AS (
+    SELECT SUB_ACCOUNT_ID,
+           MAX_BY(SUBSCRIPTION_ACCOUNT_ID, "DATE") AS SUB_ID,
+           SUM(TOTAL_GB) AS NPM_GB
+    FROM TRANSFORMED.PRODUCT_CONSUMPTION.NRDB_TDP_USAGE_DAILY_F
+    WHERE USAGE_CATEGORY = 'NetworkMonitoring'
+      AND "DATE" >= '{{start_date}}' AND "DATE" < '{{end_date}}'
+    GROUP BY SUB_ACCOUNT_ID
+),
+ORGX AS (
+    SELECT TO_VARCHAR(A.ID) AS ACCOUNT_ID, O.NAME AS ORG_NAME
+    FROM CONFORMED.ORGANIZATION_DB.STG_ORGANIZATION_DB_ACCOUNTS A
+    LEFT JOIN CONFORMED.ORGANIZATION_DB.STG_ORGANIZATION_DB_ORGANIZATIONS O ON O.ID = A.ORGANIZATION_ID
+    WHERE TO_VARCHAR(A.ID) IN (SELECT TO_VARCHAR(SUB_ACCOUNT_ID) FROM NPM)
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY A.ID ORDER BY A.UPDATED_AT DESC, O.UPDATED_AT DESC) = 1
+),
+RPMX AS (
+    SELECT ACCOUNT_ID, PARTNERSHIP_NAME
+    FROM TRANSFORMED.COMMON.RPM_ACCOUNT_DAILY_D
+    WHERE REPORT_AS_OF_DT = DATEADD(DAY, -1, '{{end_date}}'::DATE)
+      AND ACCOUNT_ID IN (SELECT TO_VARCHAR(SUB_ACCOUNT_ID) FROM NPM)
+),
+CCX AS (
+    SELECT CUSTOMER_CONTRACT_ID AS SUB_ID, COALESCE(MAX(IS_INTERNAL_ACCOUNT::INT), 0) = 1 AS IS_INTERNAL
+    FROM TRANSFORMED.COMMON.ACCOUNT_DAILY_D
+    WHERE REPORT_AS_OF_DT = DATEADD(DAY, -1, '{{end_date}}'::DATE)
+      AND CUSTOMER_CONTRACT_ID IN (SELECT SUB_ID FROM NPM)
+    GROUP BY 1
+),
+CLIENT AS (
+    SELECT N.SUB_ID, COUNT(*) AS ACCOUNTS, SUM(N.NPM_GB) AS NPM_GB,
+           BOOLOR_AGG(COALESCE(O.ORG_NAME IN ('New Relic Production US', 'New Relic Production EU'), FALSE)
+                      OR COALESCE(R.PARTNERSHIP_NAME ILIKE 'New Relic Internal Use%', FALSE)) AS ACC_INTERNAL
+    FROM NPM N
+    LEFT JOIN ORGX O ON O.ACCOUNT_ID = TO_VARCHAR(N.SUB_ACCOUNT_ID)
+    LEFT JOIN RPMX R ON R.ACCOUNT_ID = TO_VARCHAR(N.SUB_ACCOUNT_ID)
+    GROUP BY N.SUB_ID
+),
+PRICE AS (
+    SELECT CUSTOMER_ACCOUNT_ID AS SUB_ID,
+           SUM(MTD_ACTUALS_BILLED_QTY) AS BILLED_GB,
+           SUM(MTD_EFF_AMT) AS EFF_AMT, SUM(MTD_CONTR_AMT) AS CONTR_AMT
+    FROM REPORTING.CONSUMPTION_METRICS.CONSUMPTION_DAILY_METRICS_DETAIL
+    WHERE REPORT_AS_OF_DT = DATEADD(DAY, -1, '{{end_date}}'::DATE) AND UOM_CATEGORY = 'Ingest'
+    GROUP BY 1
+),
+J AS (
+    SELECT C.SUB_ID, C.ACCOUNTS, C.NPM_GB,
+           P.EFF_AMT / NULLIF(P.BILLED_GB, 0) AS EFF_PRICE_PER_GB,
+           P.CONTR_AMT / NULLIF(P.BILLED_GB, 0) AS CONTR_PRICE_PER_GB,
+           CASE WHEN C.ACC_INTERNAL OR COALESCE(X.IS_INTERNAL, FALSE) THEN 'Internal (New Relic own)'
+                WHEN P.SUB_ID IS NULL THEN 'No Finance row'
+                WHEN COALESCE(P.BILLED_GB, 0) = 0 THEN 'No billed ingest (within free allowance)'
+                WHEN COALESCE(P.EFF_AMT, 0) = 0 THEN 'Billed at $0 (credit, trial or free program)'
+                ELSE 'Priced' END AS STATUS
+    FROM CLIENT C
+    LEFT JOIN PRICE P ON P.SUB_ID = C.SUB_ID
+    LEFT JOIN CCX X ON X.SUB_ID = C.SUB_ID
+)
+SELECT COALESCE(STATUS, 'ALL CONTRACTS') AS STATUS,
+       COUNT(*) AS CONTRACTS, SUM(ACCOUNTS) AS ACCOUNTS,
+       ROUND(SUM(NPM_GB), 0) AS NPM_GB,
+       ROUND(SUM(NPM_GB * EFF_PRICE_PER_GB), 0) AS PERIOD_VALUE_EFF,
+       ROUND(SUM(NPM_GB * EFF_PRICE_PER_GB * 12), 0) AS ARR_EFF_X12,
+       ROUND(SUM(NPM_GB * EFF_PRICE_PER_GB * 365 / DATEDIFF(DAY, '{{start_date}}', '{{end_date}}')), 0) AS ARR_EFF_DAILY_RATE_X365,
+       ROUND(SUM(NPM_GB * CONTR_PRICE_PER_GB * 12), 0) AS ARR_CONTR_X12
+FROM J
+GROUP BY ROLLUP(STATUS)
+ORDER BY STATUS NULLS LAST
+```
+
 ## Pitfalls
 
 - **Repeated inserts double-count.** Keep one row per account, `START_TIME`, `METRIC` and `PRODUCT_LINE`: `ROW_NUMBER()` over that partition, latest `INSERTED_AT` first. Critical. Last used: 2026-10-23.
@@ -148,5 +223,8 @@ ORDER BY X.SFDC_ACCOUNT_NAME, X.CREDIT_MONTH
 - **Billable usage isn't a paid signal.** In the billing-pipeline views, `BILLABLE_USAGE` is usage minus the free allowance for everyone. `CoreCCU`, `BillionScannedEvents` and `BillionInspectedCount` are billable for nearly every customer, and `Unbilled…` meters aren't charged, so none of them says who pays. `GigabytesIngested` is billable only above the free 100 GB a month, so a paying customer under it shows zero. Use `RPM_ACCOUNT_DAILY_D.IS_PAID` (`npm.md`, "Networking clients"). Critical. Last used: 2026-10-23.
 - **Matching II companies to billing customers.** II `SUBSCRIPTION_ACCOUNT_ID` is a `CC-…` for some and a plain account ID for others, so matching billing `CUSTOMER_ID` alone misses most of them. Match three ways and union them: billing `TELEMETRY_ACCOUNT_ID` = the company's accounts, `CUSTOMER_ID` = its ID, and `TELEMETRY_ACCOUNT_ID` = its ID. Some companies share a billing customer with another ID, so count billing customers when you need companies. Critical. Last used: 2026-10-23.
 - **Monthly adjustments aren't additive.** In the Xactly table, `ADJ_CONSUMPTION_AMT` can be a delta or a replacement for that month's `TOTAL_CONSUMPTION`, so adding them over-counts. Use `YTD_CONSUMPTION_AMT`. Critical. Last used: 2026-10-22.
-- **Revenue is not booked revenue.** `BCM_TTM_AMT` is consumption, and a commitment is a floor: a customer under its commitment still pays the commitment. Partner deals are at the customer's contract value, so New Relic's net after partner margin may be lower. Show consumption, commitment and run rate together. Last used: 2026-10-22.
+- **Revenue is not booked revenue.** `BCM_TTM_AMT` is consumption, and a commitment is a floor: a customer under its commitment still pays the commitment. Partner deals are at the customer's contract value, so New Relic's net after partner margin may be lower. Show consumption, commitment and run rate together. Last used: 2026-11-03.
 - **Use `_HEADER`, not the old table.** `TRANSFORMED.FINANCE.MT_DENORM_CONSUMPTION_DAILY_METRICS` stopped in March 2026. Its replacements are `…_HEADER` and `…_DETAIL`. Critical. Last used: 2026-10-22.
+- **Unpriced network GB.** `CONSUMPTION_DAILY_METRICS_DETAIL` has no `Ingest` row for customers billed through New Relic Japan KK or its resellers, for one-time deals ("One Time Fulfilled" partnership) and for many free-tier accounts, so their network GB is unpriced, not free. Show it as its own line next to the priced total, and say so. Critical. Last used: 2026-11-03.
+- **Price network GB with `Ingest`, not `CCU`.** Network data is metered as GB ingested (`UOM_CATEGORY = 'Ingest'`). The `CCU` meter (Core and Advanced CCU) is a different product. Last used: 2026-11-03.
+- **Join key in past months.** For an earlier window, II's contract ID is often a plain account ID rather than a `CC-…`, and Finance's `CUSTOMER_ACCOUNT_ID` carries the same plain ID on that date, so join them as they are. Mapping the account to its later `CC-…` contract added almost no matches. Last used: 2026-11-03.

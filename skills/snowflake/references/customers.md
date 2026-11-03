@@ -62,7 +62,7 @@ LIMIT 100
 ```
 
 ### Company name for an account ID
-Use for: naming the accounts in a usage result. Last used: 2026-10-09.
+Use for: naming the accounts in a usage result. Last used: 2026-11-03.
 
 ```sql
 SELECT R.RPM_ACCOUNT_ID, R.RPM_ACCOUNT_NAME, ACC.SFDC_ACCOUNT_NAME
@@ -70,6 +70,24 @@ FROM TRANSFORMED.SALES.SFDC_RPM_RECORD_D R
 JOIN TRANSFORMED.SALES.SFDC_ACCOUNT_D ACC ON ACC.SFDC_ACCOUNT_ID = R.SFDC_ACCOUNT_ID
 WHERE R.IS_DELETED = FALSE
   AND R.RPM_ACCOUNT_ID = '{{account_id}}'
+```
+
+### One contact email per account
+Use for: "an email associated with account X", "a contact at company X". Customer-side emails come from the Salesforce contacts on the account's Salesforce company, not from the usage tables. Picks the most recently updated contact that has an email and isn't deleted, bounced or opted out; `USABLE_CONTACTS` shows how many it chose from. The contact is a person at the company, not necessarily someone who uses the New Relic account. For several accounts, use `IN ('…', '…')`. Customer emails stay in `runs/`. Last used: 2026-11-03.
+
+```sql
+SELECT R.RPM_ACCOUNT_ID, ACC.SFDC_ACCOUNT_NAME, C.NAME AS CONTACT_NAME, C.TITLE, C.EMAIL, C.CONTACT_STATUS_C,
+       COUNT(*) OVER (PARTITION BY R.RPM_ACCOUNT_ID) AS USABLE_CONTACTS
+FROM TRANSFORMED.SALES.SFDC_RPM_RECORD_D R
+JOIN TRANSFORMED.SALES.SFDC_ACCOUNT_D ACC ON ACC.SFDC_ACCOUNT_ID = R.SFDC_ACCOUNT_ID AND ACC.IS_DELETED = FALSE
+JOIN CONFORMED.SFDC.STG_SFDC_CONTACT C ON C.ACCOUNT_ID = R.SFDC_ACCOUNT_ID
+WHERE R.IS_DELETED = FALSE
+  AND R.RPM_ACCOUNT_ID = '{{account_id}}'
+  AND C.IS_DELETED = FALSE
+  AND C.EMAIL IS NOT NULL AND C.EMAIL <> ''
+  AND COALESCE(C.IS_EMAIL_BOUNCED, FALSE) = FALSE
+  AND COALESCE(C.HAS_OPTED_OUT_OF_EMAIL, FALSE) = FALSE
+QUALIFY ROW_NUMBER() OVER (PARTITION BY R.RPM_ACCOUNT_ID ORDER BY C.LAST_MODIFIED_DATE DESC) = 1
 ```
 
 ### Billing address, one line per company
@@ -134,6 +152,6 @@ ORDER BY 1, 2, 3, 4
 - **Street line breaks.** `BILLING_STREET` holds `CHR(10)` and `CHR(13)`. Replace both before showing an address. Last used: 2026-09-30.
 - **Team roles are loose.** The "AE" role on `ACCOUNT_TEAM_MEMBER_D` lists past AEs and also SCs and TSMs, and most TSMs sit under "Expansion Driver". The account owner on `SFDC_ACCOUNT_D` is the AE; an owner with role `Mulesoft User` is an integration, so use the team's active AEs instead. Take SCs and TSMs from active people whose `TITLE` says so. SCs are rarely recorded, so blanks are normal, and `TSM_MAP` on the account is a spreadsheet link, not a person. Critical. Last used: 2026-10-13.
 - **Companies with similar names.** Short names such as UPS, BRI, NSW or Jio match unrelated accounts, so match them as whole words: `REGEXP_LIKE(name, '(.*[^A-Za-z])?(UPS)([^A-Za-z].*)?')`. Group a company by `ULTIMATE_PARENT_ACCOUNT_ID`, but some subsidiaries sit under their own parent, so also sweep for subsidiary names. To rule out a look-alike, compare `WEBSITE`, the `ZI_*` company fields, `PARENT_ID`, the sales region and the owner on `SFDC_ACCOUNT_D`. Last used: 2026-10-22.
-- **Past paid status.** `RPM_ACCOUNT_DAILY_D` starts 2026-01-01, `ACCOUNT_DAILY_D` holds few of 2025's accounts, and `FINANCE.CUSTOMER_DAILY_D` misses 2025 customers on the newer billing platform, so big paying customers look free. For a date before 2026, use the earliest RPM snapshot and say that customers who changed plan since are misclassified. Critical. Last used: 2026-10-23.
+- **Past paid status.** `RPM_ACCOUNT_DAILY_D` starts 2026-01-01, `ACCOUNT_DAILY_D` holds few of 2025's accounts, and `FINANCE.CUSTOMER_DAILY_D` misses 2025 customers on the newer billing platform, so big paying customers look free. For a date before 2026, use the earliest RPM snapshot and say that customers who changed plan since are misclassified. Critical. Last used: 2026-11-03.
 - **Compliance flags.** `IS_FEDRAMP_CAPABLE` and `IS_HIPAA_CAPABLE` mean eligible and are set on most accounts, so never read them as "requires". Use `IS_FEDRAMP` or `IS_HIPAA` with value 1 and `IS_ACTIVE`; value 0 means switched off. New Relic enables FedRAMP only for approved customers, so "enabled" is the best proxy for "requires", and prospects that need it won't show. Critical. Last used: 2026-10-21.
 - **Nothing for IL4.** Column names in `CONFORMED`, `TRANSFORMED`, `REPORTING` and `RAW`, and the org capabilities, features and regions, hold no IL4, impact-level, StateRAMP or GovCloud field. Salesforce syncs only `HIPAA_COMPLIANT_C`. `CUSTOMER360.STG_C360_INCUBATOR_ADHOC.FEDRAMP_INCUBATOR_ENABLED` hasn't been updated since 2025. As of 2026-10-21, say IL4 isn't in Snowflake. Last used: 2026-10-21.
